@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "යෙදුම සබල කර ඇත",
 "could not enable app": "යෙදුම සබල කිරීමට නොහැකි විය",

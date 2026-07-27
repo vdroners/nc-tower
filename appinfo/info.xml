@@ -1,33 +1,38 @@
 <?xml version="1.0"?>
 <info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	  xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
-	<id>admincockpit</id>
-	<name>Admin Cockpit</name>
-	<summary>AdminCockpit is an administration tool for Nextcloud</summary>
-	<description><![CDATA[**AdminCockpit is an administration tool for Nextcloud**
-- ✅ All important administration pages at a glance
-- ✅ No more clicking back and forth in the menus
-- ✅ Modern and compact look
-- ✅ Intuitive operation without a page-long manual
-- ✅ send notification to users and groups]]></description>
-	<version>1.3.2</version>
+	<id>nc_tower</id>
+	<name>Control Tower</name>
+	<summary>Nextcloud orchestrator for admin, stacks, host health, and ops inbox</summary>
+	<description><![CDATA[**Control Tower** is the Nextcloud orchestrator for this GCS host — admin, stacks, health, and ops inbox in one place.
+
+Fork of [Admin Cockpit](https://github.com/zomtec2311/admincockpit) by Wolfgang Tödt (AGPL-3.0), rebranded and extended.
+
+- Unified admin pages (users, apps, system)
+- Host health and Docker stack status (via allowlisted sidecar)
+- Ops inbox visibility and Tools deep-links
+- Webmin / Portainer remain break-glass for deep OS and full Docker control
+
+See CREDITS.md for attribution.]]></description>
+	<version>1.4.0</version>
 	<licence>agpl</licence>
 	<author mail="wtoedt@gmail.com" homepage="https://github.com/zomtec2311/admincockpit">Wolfgang Tödt</author>
-	<namespace>AdminCockpit</namespace>
+	<author mail="dan@19labs.com" homepage="https://github.com/vdroners/nc-tower">Sarge</author>
+	<namespace>NcTower</namespace>
 	<category>monitoring</category>
 	<category>tools</category>
-	<bugs>https://github.com/zomtec2311/admincockpit/issues</bugs>
-	<screenshot small-thumbnail="https://raw.githubusercontent.com/zomtec2311/admincockpit/refs/heads/main/screenshots/admincockpit-system-small.png">https://raw.githubusercontent.com/zomtec2311/admincockpit/refs/heads/main/screenshots/admincockpit-system.png</screenshot>
-	<screenshot small-thumbnail="https://raw.githubusercontent.com/zomtec2311/admincockpit/refs/heads/main/screenshots/admincockpit-apps-small.png">https://raw.githubusercontent.com/zomtec2311/admincockpit/refs/heads/main/screenshots/admincockpit-apps.png</screenshot>
-	<website>https://github.com/zomtec2311/admincockpit</website>
+	<bugs>https://github.com/vdroners/nc-tower/issues</bugs>
+	<screenshot small-thumbnail="https://raw.githubusercontent.com/vdroners/nc-tower/refs/heads/main/screenshots/nc_tower-system-small.png">https://raw.githubusercontent.com/vdroners/nc-tower/refs/heads/main/screenshots/nc_tower-system.png</screenshot>
+	<screenshot small-thumbnail="https://raw.githubusercontent.com/vdroners/nc-tower/refs/heads/main/screenshots/nc_tower-apps-small.png">https://raw.githubusercontent.com/vdroners/nc-tower/refs/heads/main/screenshots/nc_tower-apps.png</screenshot>
+	<website>https://github.com/vdroners/nc-tower</website>
 	<dependencies>
 		<nextcloud min-version="31" max-version="34"/>
 	</dependencies>
 	<navigations>
 		<navigation>
-			<id>admincockpit</id>
-			<name>Admin Cockpit</name>
-			<route>admincockpit.page.index</route>
+			<id>nc_tower</id>
+			<name>Control Tower</name>
+			<route>nc_tower.page.index</route>
 			<icon>app.svg</icon>
 			<type>link</type>
 		</navigation>

@@ -1,7 +1,7 @@
 <?php
 /**
  *
- * AdminCockpit APP (Nextcloud)
+ * NcTower APP (Nextcloud)
  *
  * @author Wolfgang Tödt <wtoedt@gmail.com>
  *
@@ -25,7 +25,7 @@
  */
 declare(strict_types=1);
 
-namespace OCA\AdminCockpit\Controller;
+namespace OCA\NcTower\Controller;
 
 use OC\App\AppManager;
 use OC\App\AppStore\Bundles\BundleFetcher;
@@ -48,7 +48,7 @@ use OCP\IDBConnection;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\JSONResponse;
-use OCA\AdminCockpit\Service\MyService;
+use OCA\NcTower\Service\MyService;
 use OCP\IRequest;
 use Psr\Log\LoggerInterface;
 use OCP\IAppConfig;
@@ -164,8 +164,8 @@ class AppsController extends Controller {
 
         } catch (\Throwable $e) {
             $this->logger->error(
-                'AdminCockpit193: FATAL ERROR or EXCEPTION in DataController->appsinfo: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'admincockpit']
+                'NcTower193: FATAL ERROR or EXCEPTION in DataController->appsinfo: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+                ['app' => 'nc_tower']
             );
             return new DataResponse([
                 'db' => -1,
@@ -192,7 +192,7 @@ class AppsController extends Controller {
             }
             $wtarr[$i]["name"] = $appinfo;
             $wtarr[$i]["id"] = $i;
-            $wtarr[$i]["icon"] = $icon ? $icon : $this->appManager->getAppWebPath('admincockpit') . "/img/dummy.svg";
+            $wtarr[$i]["icon"] = $icon ? $icon : $this->appManager->getAppWebPath('nc_tower') . "/img/dummy.svg";
             
             $wtarr[$i]["version"] = $this->appManager->getAppVersion($appid, true);
             $wtarr[$i]["shipped"] = $this->appManager->isShipped($appid);
@@ -214,8 +214,8 @@ class AppsController extends Controller {
             }
         } catch (\Throwable $e) {
             $this->logger->error(
-                'AdminCockpit235: FATAL ERROR or EXCEPTION in DataController->disableapp: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'admincockpit']
+                'NcTower235: FATAL ERROR or EXCEPTION in DataController->disableapp: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+                ['app' => 'nc_tower']
             );
             return 'false';
         }
@@ -240,8 +240,8 @@ class AppsController extends Controller {
             }
         } catch (\Throwable $e) {
             $this->logger->error(
-                'AdminCockpit261: FATAL ERROR or EXCEPTION in DataController->disableapp: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'admincockpit']
+                'NcTower261: FATAL ERROR or EXCEPTION in DataController->disableapp: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+                ['app' => 'nc_tower']
             );
             return 'false';
         }
@@ -290,7 +290,7 @@ class AppsController extends Controller {
 			}
 			else {
                 $icon = $this->appManager->getAppIcon($app['id'], false);
-                $app["icon"] = $icon ? $icon : $this->appManager->getAppWebPath('admincockpit') . "/img/dummy.svg";
+                $app["icon"] = $icon ? $icon : $this->appManager->getAppWebPath('nc_tower') . "/img/dummy.svg";
                 $app['updateState'] = 'idle';
                 $app['updateVersion'] = $newVersion;
             }

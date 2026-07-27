@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "app cumasaithe",
 "could not enable app": "níorbh fhéidir an feidhmchlár a chumasú",

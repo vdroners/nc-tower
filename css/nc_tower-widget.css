@@ -198,7 +198,7 @@
   height: 16px;
 }
 
-.icon-admincockpit {
+.icon-nc_tower {
 	background-image: url(./../img/app-dark.svg);
 	filter: var(--background-invert-if-dark);
 }

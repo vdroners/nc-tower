@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "sovellus käytössä",
 "could not enable app": "sovellusta ei voitu ottaa käyttöön",

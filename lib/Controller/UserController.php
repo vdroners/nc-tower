@@ -1,7 +1,7 @@
 <?php
 /**
  *
- * AdminCockpit APP (Nextcloud)
+ * NcTower APP (Nextcloud)
  *
  * @author Wolfgang Tödt <wtoedt@gmail.com>
  *
@@ -25,7 +25,7 @@
  */
 declare(strict_types=1);
 
-namespace OCA\AdminCockpit\Controller;
+namespace OCA\NcTower\Controller;
 
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
@@ -38,7 +38,7 @@ use OCP\IDBConnection;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\JSONResponse;
-use OCA\AdminCockpit\Service\MyService;
+use OCA\NcTower\Service\MyService;
 use OCP\IRequest;
 use Psr\Log\LoggerInterface;
 use OCP\IAppConfig;
@@ -157,8 +157,8 @@ class UserController extends Controller {
 
         } catch (\Throwable $e) {
             $this->logger->error(
-                'AdminCockpit: FATAL ERROR or EXCEPTION in DataController->usercount: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'admincockpit']
+                'NcTower: FATAL ERROR or EXCEPTION in DataController->usercount: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+                ['app' => 'nc_tower']
             );
             return new DataResponse([
                 'userCount' => -1,
@@ -172,7 +172,7 @@ class UserController extends Controller {
             if ($this->userManager->userExists($who)) { 
                  $user = $this->userManager->get($who);
                  if ($user->delete()) {
-                     $this->logger->info("AdminCockpit: User $who successful deleted");
+                     $this->logger->info("NcTower: User $who successful deleted");
                      return 'true';
                 }
                  else { return 'false'; }               
@@ -182,8 +182,8 @@ class UserController extends Controller {
             }
         } catch (\Throwable $e) {
             $this->logger->error(
-                'AdminCockpit: FATAL ERROR or EXCEPTION in DataController->deletegroup: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'admincockpit']
+                'NcTower: FATAL ERROR or EXCEPTION in DataController->deletegroup: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+                ['app' => 'nc_tower']
             );
             return 'false';
         }
@@ -217,8 +217,8 @@ class UserController extends Controller {
 
         } catch (\Throwable $e) {
             $this->logger->error(
-                'AdminCockpit: FATAL ERROR or EXCEPTION in DataController->edituser: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'admincockpit']
+                'NcTower: FATAL ERROR or EXCEPTION in DataController->edituser: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+                ['app' => 'nc_tower']
             );
             return new DataResponse([
                 'user' => -1,
@@ -236,8 +236,8 @@ class UserController extends Controller {
         
         if ($user->getDisplayName() <> $displayname) $user->setDisplayName($displayname);
         if ($password) {
-            if($user->setPassword($password, null)) $this->logger->error('AdminCockpit: Success in DataController->setPassword: ');
-            else $this->logger->error('AdminCockpit: Fail in DataController->setPassword: ');
+            if($user->setPassword($password, null)) $this->logger->error('NcTower: Success in DataController->setPassword: ');
+            else $this->logger->error('NcTower: Fail in DataController->setPassword: ');
         }
         if ($user->getEMailAddress() <> $email) $user->setEMailAddress($email);
         if ($oldgroups <> $groups) {
@@ -288,8 +288,8 @@ class UserController extends Controller {
             }
         } catch (\Throwable $e) {
             $this->logger->error(
-                'AdminCockpit: FATAL ERROR or EXCEPTION in DataController->addgroup: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'admincockpit']
+                'NcTower: FATAL ERROR or EXCEPTION in DataController->addgroup: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+                ['app' => 'nc_tower']
             );
             return 'false';
         }
@@ -314,7 +314,7 @@ class UserController extends Controller {
                     'isadmin' => '',
                 ];
 
-                $this->logger->info("AdminCockpit: User $uid successful created");
+                $this->logger->info("NcTower: User $uid successful created");
             
             return new DataResponse([
                 'user' => $userList,
@@ -322,8 +322,8 @@ class UserController extends Controller {
 
         } catch (\Throwable $e) {
             $this->logger->error(
-                'AdminCockpit: FATAL ERROR or EXCEPTION in DataController->newuser: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'admincockpit']
+                'NcTower: FATAL ERROR or EXCEPTION in DataController->newuser: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+                ['app' => 'nc_tower']
             );
             return new DataResponse([
                 'user' => -1,
@@ -335,7 +335,6 @@ class UserController extends Controller {
         return;
     }
     
-   #[NoCSRFRequired]
     public function notifyuser() {
 $rawData = file_get_contents('php://input');
 
@@ -350,7 +349,7 @@ if (json_last_error() === JSON_ERROR_NONE) {
         $nmanager = \OCP\Server::get(\OCP\Notification\IManager::class);
         $notification = $nmanager->createNotification();
 
-        $notification->setApp('admincockpit')
+        $notification->setApp('nc_tower')
             ->setUser($who)
             ->setDateTime(new \DateTime())
             ->setObject('remote', '2311') // $type and $id
@@ -365,7 +364,6 @@ if (json_last_error() === JSON_ERROR_NONE) {
         
     }
     
-    #[NoCSRFRequired]
     public function notifygroup() {
 $rawData = file_get_contents('php://input');
 
@@ -383,7 +381,7 @@ if (json_last_error() === JSON_ERROR_NONE) {
         $nmanager = \OCP\Server::get(\OCP\Notification\IManager::class);
         foreach ($groupusers as $groupuser) {
             $notification = $nmanager->createNotification();
-            $notification->setApp('admincockpit')
+            $notification->setApp('nc_tower')
             ->setUser($groupuser->getUID())
             ->setDateTime(new \DateTime())
             ->setObject('remote', '2311') // $type and $id

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 use OCP\Util;
 
-Util::addScript(OCA\AdminCockpit\AppInfo\Application::APP_ID, 'admincockpit-user');
-Util::addStyle(OCA\AdminCockpit\AppInfo\Application::APP_ID, 'admincockpit-main');
+Util::addScript(OCA\NcTower\AppInfo\Application::APP_ID, 'nc_tower-user');
+Util::addStyle(OCA\NcTower\AppInfo\Application::APP_ID, 'nc_tower-main');
 ?>
 
-<div id="admincockpit"></div>
+<div id="nc_tower"></div>

@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "ap wedi'i alluogi",
 "could not enable app": "Ni allai alluogi ap",

@@ -2,70 +2,49 @@
 
 declare(strict_types=1);
 
-namespace OCA\AdminCockpit\AppInfo;
+namespace OCA\NcTower\AppInfo;
 
 use OCP\AppFramework\App;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\AppFramework\Bootstrap\IBootContext;
-use OCP\Util;
-use Psr\Log\LoggerInterface;
-use OCA\AdminCockpit\Controller\DataController;
 use OCP\INavigationManager;
-use OCP\IServerContainer;
 use OCP\IConfig;
 use OCP\IURLGenerator;
-use OCA\AdminCockpit\Dashboard\AdminCockpitWidget;
+use OCA\NcTower\Dashboard\NcTowerWidget;
 
 class Application extends App implements IBootstrap {
-    public const APP_ID = 'admincockpit';
+	public const APP_ID = 'nc_tower';
 
-    public function __construct(array $urlParams = []) {
-        parent::__construct(self::APP_ID, $urlParams);
-    }
-
-    public function register(IRegistrationContext $context): void {
-		$context->registerNotifierService(\OCA\AdminCockpit\Notification\Notifier::class);
-		$context->registerDashboardWidget(\OCA\AdminCockpit\Dashboard\AdminCockpitWidget::class);
+	public function __construct(array $urlParams = []) {
+		parent::__construct(self::APP_ID, $urlParams);
 	}
 
-    public function boot(IBootContext $context): void {
-		$server = $context->getServerContainer();
+	public function register(IRegistrationContext $context): void {
+		$context->registerNotifierService(\OCA\NcTower\Notification\Notifier::class);
+		$context->registerDashboardWidget(NcTowerWidget::class);
+	}
+
+	public function boot(IBootContext $context): void {
 		try {
 			$context->injectFn($this->registerAppsManagementNavigation(...));
-		} catch (NotFoundExceptionInterface|ContainerExceptionInterface|Throwable) {
+		} catch (\Throwable) {
 		}
 	}
-    
-    private function registerAppsManagementNavigation(IConfig $config, IAppManager $appManager): void {
+
+	private function registerAppsManagementNavigation(IConfig $config, IAppManager $appManager): void {
 		$container = $this->getContainer();
-		$appManager->enableAppForGroups(self::APP_ID, array('admin'), false);
-		$wtpara_menue = 2;
-		if ($wtpara_menue == 1) {
-			$container->get(INavigationManager::class)->add(function () use ($container) {
-				$urlGenerator = $container->get(IURLGenerator::class);
-				return [
-					'id' => self::APP_ID,
-					'order' => 2,
-					'href' => $urlGenerator->linkToRoute(self::APP_ID.'.page.index'),
-					'icon' => $urlGenerator->imagePath(self::APP_ID, 'app-dark.svg'),
-					'name' => 'Admin Cockpit',
-					'type' => 'settings'
-				];
-			});
-		}
-		else {
-			$container->get(INavigationManager::class)->add(function () use ($container) {
-				$urlGenerator = $container->get(IURLGenerator::class);
-				return [
+		$appManager->enableAppForGroups(self::APP_ID, ['admin'], false);
+		$container->get(INavigationManager::class)->add(function () use ($container) {
+			$urlGenerator = $container->get(IURLGenerator::class);
+			return [
 				'id' => self::APP_ID,
 				'order' => 1000,
-				'href' => $urlGenerator->linkToRoute(self::APP_ID.'.page.index'),
+				'href' => $urlGenerator->linkToRoute(self::APP_ID . '.page.index'),
 				'icon' => $urlGenerator->imagePath(self::APP_ID, 'app.svg'),
-				'name' => 'Admin Cockpit',
-				];
-			});
-		}
+				'name' => 'Control Tower',
+			];
+		});
 	}
 }

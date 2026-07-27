@@ -1,7 +1,7 @@
 <?php
 /**
  *
- * AdminCockpit APP (Nextcloud)
+ * NcTower APP (Nextcloud)
  *
  * @author Wolfgang Tödt <wtoedt@gmail.com>
  *
@@ -25,9 +25,9 @@
  */
 declare(strict_types=1);
 
-namespace OCA\AdminCockpit\Notification;
+namespace OCA\NcTower\Notification;
 
-use OCA\AdminCockpit\AppInfo\Application;
+use OCA\NcTower\AppInfo\Application;
 use OCP\IURLGenerator;
 use OCP\L10N\IFactory;
 use OCP\Notification\INotification;
@@ -54,7 +54,7 @@ class Notifier implements INotifier {
 	 * @return string
 	 */
 	public function getID(): string {
-		return 'admincockpit';
+		return 'nc_tower';
 	}
 
 	/**
@@ -62,7 +62,7 @@ class Notifier implements INotifier {
 	 * @return string
 	 */
 	public function getName(): string {
-		return $this->factory->get('admincockpit')->t('admincockpit');
+		return $this->factory->get('nc_tower')->t('nc_tower');
 	}
 
 	/**
@@ -70,13 +70,13 @@ class Notifier implements INotifier {
 	 * @param string $languageCode The code of the language that should be used to prepare the notification
 	 */
 	public function prepare(INotification $notification, string $languageCode): INotification {
-		if ($notification->getApp() !== 'admincockpit') {
+		if ($notification->getApp() !== 'nc_tower') {
 			// Not my app => throw
 			throw new \OCP\Notification\UnknownNotificationException();
 		}
 		
 		$lang = $this->factory->getUserLanguage($this->userSession->getUser());
-        $l = $this->factory->get('admincockpit', $lang);
+        $l = $this->factory->get('nc_tower', $lang);
         
         switch ($notification->getSubject()) {
 			case 'abc':
@@ -84,7 +84,7 @@ class Notifier implements INotifier {
 				$message = $parameters['message'];
                 $von = $parameters['von'];
 				$notification->setParsedSubject($l->t('message from %1$s', [$von]))
-					->setIcon($this->url->getAbsoluteURL($this->url->imagePath('admincockpit', 'app-dark.svg')))
+					->setIcon($this->url->getAbsoluteURL($this->url->imagePath('nc_tower', 'app-dark.svg')))
                     ->setParsedMessage($message);
 
 				$action = $notification->createAction();

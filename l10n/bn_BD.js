@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "অ্যাপ সক্রিয়",
 "could not enable app": "অ্যাপ সক্রিয় করতে পারেনি",

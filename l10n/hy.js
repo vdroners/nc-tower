@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "հավելվածը միացված է",
 "could not enable app": "չհաջողվեց միացնել հավելվածը",

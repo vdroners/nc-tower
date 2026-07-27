@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "uygulama etkin",
 "could not enable app": "uygulama etkinleştirilemedi",

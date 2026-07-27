@@ -26,9 +26,9 @@
 
 declare(strict_types=1);
 
-namespace OCA\AdminCockpit\Dashboard;
+namespace OCA\NcTower\Dashboard;
 
-use OCA\AdminCockpit\AppInfo\Application;
+use OCA\NcTower\AppInfo\Application;
 use OCP\Dashboard\IWidget;
 use OCP\Dashboard\IConditionalWidget;
 use OCP\IConfig;
@@ -39,7 +39,7 @@ use OCP\IUserSession;
 use OCP\IGroupManager;
 
 #[\AllowDynamicProperties]
-class AdminCockpitWidget implements IWidget, IConditionalWidget
+class NcTowerWidget implements IWidget, IConditionalWidget
 {
   public function __construct(private IL10N $l10n,
   private IURLGenerator $url,
@@ -59,7 +59,7 @@ public function isEnabled(): bool {
  * @inheritDoc
  */
 public function getId(): string {
-  return 'admincockpit-widget';
+  return 'nc_tower-widget';
 }
 
 /**
@@ -80,7 +80,7 @@ public function getOrder(): int {
  * @inheritDoc
  */
 public function getIconClass(): string {
-  return 'icon-admincockpit';
+  return 'icon-nc_tower';
 }
 
 /**
@@ -92,7 +92,7 @@ public function getUrl(): ?string {
 
     public function load(): void
     {
-        Util::addScript('admincockpit', 'admincockpit-widget');
-        Util::addStyle('admincockpit', 'admincockpit-widget');
+        Util::addScript('nc_tower', 'nc_tower-widget');
+        Util::addStyle('nc_tower', 'nc_tower-widget');
     }
 }

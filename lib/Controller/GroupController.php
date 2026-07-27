@@ -1,7 +1,7 @@
 <?php
 /**
  *
- * AdminCockpit APP (Nextcloud)
+ * NcTower APP (Nextcloud)
  *
  * @author Wolfgang Tödt <wtoedt@gmail.com>
  *
@@ -25,7 +25,7 @@
  */
 declare(strict_types=1);
 
-namespace OCA\AdminCockpit\Controller;
+namespace OCA\NcTower\Controller;
 
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
@@ -38,7 +38,7 @@ use OCP\IDBConnection;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\JSONResponse;
-use OCA\AdminCockpit\Service\MyService;
+use OCA\NcTower\Service\MyService;
 use OCP\IRequest;
 use Psr\Log\LoggerInterface;
 use OCP\IAppConfig;
@@ -89,8 +89,8 @@ class GroupController extends Controller {
             }
         } catch (\Throwable $e) {
             $this->logger->error(
-                'AdminCockpit: FATAL ERROR or EXCEPTION in DataController->addgroup: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'admincockpit']
+                'NcTower: FATAL ERROR or EXCEPTION in DataController->addgroup: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+                ['app' => 'nc_tower']
             );
             return 'false';
         }
@@ -107,8 +107,8 @@ class GroupController extends Controller {
             }
         } catch (\Throwable $e) {
             $this->logger->error(
-                'AdminCockpit: FATAL ERROR or EXCEPTION in DataController->deletegroup: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'admincockpit']
+                'NcTower: FATAL ERROR or EXCEPTION in DataController->deletegroup: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+                ['app' => 'nc_tower']
             );
             return 'false';
         }

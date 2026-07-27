@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "ئەپ قوزغىتىلدى",
 "could not enable app": "ئەپنى قوزغىتالمىدى",

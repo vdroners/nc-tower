@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.4.0] - 2026-07-27
+
+### Added
+- Rebrand as **Control Tower** (`nc_tower`) — fork of Admin Cockpit 1.3.2
+- CREDITS.md + README attribution / fork lineage
+- Read-only sidecar (containers, stacks, host summary, ops inbox)
+- TowerController proxy routes + Tools deep-links
+- Makefile ship / gate-preflight (nc-print style)
+
+### Changed
+- Admin-only page controllers (removed NoAdminRequired)
+- CSRF required again on notify user/group
+- Dual authors in info.xml (Wolfgang Tödt + Sarge)
+
+### Security
+- No docker.sock in Nextcloud PHP; sidecar-only Docker access
+
 ## 1.3.2
 
 ### Fixed

@@ -29,5 +29,11 @@ return [
     ['name' => 'User#notifyuser', 'url' => '/notifyuser', 'verb' => 'POST'],
     ['name' => 'User#notifygroup', 'url' => '/notifygroup', 'verb' => 'POST'],
     ['name' => 'User#usercount', 'url' => '/usercount', 'verb' => 'GET'],
+    ['name' => 'tower#health', 'url' => '/tower/health', 'verb' => 'GET'],
+    ['name' => 'tower#hostSummary', 'url' => '/tower/host', 'verb' => 'GET'],
+    ['name' => 'tower#containers', 'url' => '/tower/containers', 'verb' => 'GET'],
+    ['name' => 'tower#stacks', 'url' => '/tower/stacks', 'verb' => 'GET'],
+    ['name' => 'tower#opsInbox', 'url' => '/tower/ops-inbox', 'verb' => 'GET'],
+    ['name' => 'tower#tools', 'url' => '/tower/tools', 'verb' => 'GET'],
   ]
 ];

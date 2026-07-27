@@ -1,9 +1,9 @@
 <?php
 
-namespace OCA\AdminCockpit\Service;
+namespace OCA\NcTower\Service;
 
 use OCP\IDBConnection;
-use OCA\AdminCockpit\Db\MyRepository;
+use OCA\NcTower\Db\MyRepository;
 use OC\Updater\VersionCheck;
 use OCP\IUserManager;
 use OCP\IConfig;
@@ -32,22 +32,22 @@ class MyService {
         try {
             $sql = $qb->getSQL();
         } catch (\Throwable $e) {
-            $this->logger->warning('AdminCockpit: Failed to get SQL string from QueryBuilder: ' . $e->getMessage(), ['app' => 'admincockpit']);
+            $this->logger->warning('NcTower: Failed to get SQL string from QueryBuilder: ' . $e->getMessage(), ['app' => 'nc_tower']);
             return -99; }
         try {
             //$result = $qb->execute();
             $result = $qb->executeStatement();
 
             if ($result === false) {
-                $this->logger->warning('AdminCockpit: Query execution failed (returned boolean false).', ['app' => 'admincockpit', 'sql' => $sql]);
+                $this->logger->warning('NcTower: Query execution failed (returned boolean false).', ['app' => 'nc_tower', 'sql' => $sql]);
                 return -1;
             }
             if ($result === null) {
-                $this->logger->warning('AdminCockpit: Query execution returned null.', ['app' => 'admincockpit', 'sql' => $sql]);
+                $this->logger->warning('NcTower: Query execution returned null.', ['app' => 'nc_tower', 'sql' => $sql]);
                 return -2;
             }
             if (!is_object($result) || !method_exists($result, 'fetchColumn')) {
-                $this->logger->warning('AdminCockpit: Query execution returned an unexpected type/object without fetchColumn method.', ['app' => 'admincockpit', 'result_type' => gettype($result), 'sql' => $sql]);
+                $this->logger->warning('NcTower: Query execution returned an unexpected type/object without fetchColumn method.', ['app' => 'nc_tower', 'result_type' => gettype($result), 'sql' => $sql]);
                 return -3;
             }
             $count = (int)$result->fetchColumn();
@@ -55,8 +55,8 @@ class MyService {
             return $count;
         } catch (\Throwable $e) {
             $this->logger->error(
-                'AdminCockpit: FATAL ERROR or EXCEPTION during user count DB query: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'admincockpit', 'sql' => $sql]
+                'NcTower: FATAL ERROR or EXCEPTION during user count DB query: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+                ['app' => 'nc_tower', 'sql' => $sql]
             );
             return -4;
         }

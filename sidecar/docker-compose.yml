@@ -1,0 +1,27 @@
+services:
+  nc-tower-sidecar:
+    image: python:3.12-slim
+    container_name: nc_tower_sidecar
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      bash -c "pip install --quiet docker && python /app/app.py"
+    environment:
+      NC_TOWER_BIND: "0.0.0.0"
+      NC_TOWER_PORT: "18765"
+      NC_TOWER_SIDECAR_TOKEN: "${NC_TOWER_SIDECAR_TOKEN:-changeme}"
+      NC_TOWER_OPS_ROOT: /ops
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - ./app.py:/app/app.py:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /media/4TB/ops:/ops:ro
+      - /media/4TB:/media/4TB:ro
+    ports:
+      - "127.0.0.1:18765:18765"
+    networks:
+      - cloud_cloud_network
+
+networks:
+  cloud_cloud_network:
+    external: true

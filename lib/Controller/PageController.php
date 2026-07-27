@@ -2,20 +2,19 @@
 
 declare(strict_types=1);
 
-namespace OCA\AdminCockpit\Controller;
+namespace OCA\NcTower\Controller;
 
-use OCA\AdminCockpit\AppInfo\Application;
+use OCA\NcTower\AppInfo\Application;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
-use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\OpenAPI;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IL10N;
 use OCP\IRequest;
 use OCP\IUserManager;
-use OCA\AdminCockpit\Service\MyService;
-use OCA\AdminCockpit\Controller\UserController;
+use OCA\NcTower\Service\MyService;
+use OCA\NcTower\Controller\UserController;
 use OCP\AppFramework\Http\DataResponse;
 use Psr\Log\LoggerInterface;
 /**
@@ -36,7 +35,6 @@ class PageController extends Controller {
     }
     
 	#[NoCSRFRequired]
-	#[NoAdminRequired]
 	#[OpenAPI(OpenAPI::SCOPE_IGNORE)]
 	#[FrontpageRoute(verb: 'GET', url: '/')]
 	public function index(): TemplateResponse {
@@ -47,7 +45,6 @@ class PageController extends Controller {
 	}
 	
 	#[NoCSRFRequired]
-	#[NoAdminRequired]
 	#[OpenAPI(OpenAPI::SCOPE_IGNORE)]
 	#[FrontpageRoute(verb: 'GET', url: '/')]
 	public function apps(): TemplateResponse {
@@ -58,7 +55,6 @@ class PageController extends Controller {
 	}
 	
 	#[NoCSRFRequired]
-	#[NoAdminRequired]
 	#[OpenAPI(OpenAPI::SCOPE_IGNORE)]
 	#[FrontpageRoute(verb: 'GET', url: '/')]
 	public function system(): TemplateResponse {
@@ -69,7 +65,6 @@ class PageController extends Controller {
 	}
 	
 	#[NoCSRFRequired]
-	#[NoAdminRequired]
 	#[OpenAPI(OpenAPI::SCOPE_IGNORE)]
 	#[FrontpageRoute(verb: 'GET', url: '/')]
 	public function user(): TemplateResponse {
@@ -80,7 +75,6 @@ class PageController extends Controller {
 	}
 
 	#[NoCSRFRequired]
-	#[NoAdminRequired]
 	#[FrontpageRoute(verb: 'GET', url: '/')]
 	public function userlistget(string $who = '', string $guser = '', string $gid = ''): TemplateResponse {
 		if (empty($guser)) {
@@ -92,7 +86,6 @@ class PageController extends Controller {
 	}
 
 	#[NoCSRFRequired]
-	#[NoAdminRequired]
 	#[OpenAPI(OpenAPI::SCOPE_IGNORE)]
 	#[FrontpageRoute(verb: 'POST', url: '/')]
 	public function userlist(string $who = '', string $guser = '', string $gid = ''): TemplateResponse {

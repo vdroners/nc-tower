@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "កម្មវិធីត្រូវបានបើក",
 "could not enable app": "មិនអាចបើកកម្មវិធីបានទេ។",

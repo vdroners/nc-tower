@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "앱 활성화됨",
 "could not enable app": "앱을 활성화할 수 없습니다",

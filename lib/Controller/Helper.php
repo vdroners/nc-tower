@@ -1,7 +1,7 @@
 <?php
 /**
  *
- * AdminCockpit APP (Nextcloud)
+ * NcTower APP (Nextcloud)
  *
  * @author Wolfgang Tödt <wtoedt@gmail.com>
  *
@@ -25,7 +25,7 @@
  */
 declare(strict_types=1);
 
-namespace OCA\AdminCockpit\Controller;
+namespace OCA\NcTower\Controller;
 
 use OCP\AppFramework\Http\Attribute\FrontpageRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;

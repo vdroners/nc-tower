@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "додаток увімкнено",
 "could not enable app": "не вдалося ввімкнути додаток",

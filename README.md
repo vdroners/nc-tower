@@ -1,42 +1,88 @@
-# Admin Cockpit
+# Control Tower
 
-It had annoyed me for a long time that as an admin of a nextcloud instance you don't reach all available areas centrally summarized, but sometimes have to click right and left, switch from the admin area to the users or apps, etc. My idea was therefore to combine all important administrative areas in one app. This is how the NextCloud app Admincockpit was created. However, it is currently still in a preliminary version that is not intended for productive use and is constantly being further developed.
+**Version 1.4.0**
 
-## ✨ About
+Control Tower is the Nextcloud orchestrator for this GCS host — admin, stacks, health, and ops inbox in one place.
 
-### AdminCockpit is an administration tool for Nextcloud
+> **Fork of [Admin Cockpit](https://github.com/zomtec2311/admincockpit)** by Wolfgang Tödt — rebranded and extended. See [CREDITS.md](CREDITS.md).
 
-- ✅ All important administration pages at a glance
-- ✅ No more clicking back and forth in the menus
-- ✅ Modern and compact look
-- ✅ Intuitive operation without a page-long manual
-- ✅ send notification to users and groups
+## Attribution / Fork lineage
 
-![https://raw.githubusercontent.com/zomtec2311/admincockpit/refs/heads/main/screenshots/admincockpit-system.png](https://raw.githubusercontent.com/zomtec2311/admincockpit/refs/heads/main/screenshots/admincockpit-system.png)​
-![https://raw.githubusercontent.com/zomtec2311/admincockpit/refs/heads/main/screenshots/admincockpit-apps.png](https://raw.githubusercontent.com/zomtec2311/admincockpit/refs/heads/main/screenshots/admincockpit-apps.png)​
-## ⚙️ Usage
+| | |
+|---|---|
+| Upstream | [zomtec2311/admincockpit](https://github.com/zomtec2311/admincockpit) (Admin Cockpit) |
+| Baseline | v1.3.2 |
+| This repo | [vdroners/nc-tower](https://github.com/vdroners/nc-tower) |
+| License | [AGPL-3.0](LICENSE) |
 
-- It is recommended to download or install this app directly from the [Nextcloud App store](https://apps.nextcloud.com/apps/admincockpit).
-- Alternatively you can download the [latest admincockpit release](https://github.com/zomtec2311/admincockpit/releases) based on this repository.
+Git remotes: `origin` → vdroners/nc-tower, `upstream` → zomtec2311/admincockpit.
 
-## 💡 F.A.Q.
+```bash
+git fetch upstream
+# cherry-pick / merge carefully — do not rewrite fork history
+```
 
-<details>
-  <summary><b>All of the text is in english?</b></summary>
-	Maybe your language files are missing.
+## Features
 
-  You might want to help translating the app to new languages or report errors in existing translations. So feel free and send me translations.
-</details>
+- **Nextcloud admin** — users, groups, apps, system overview (from Admin Cockpit)
+- **Host health** — CPU/RAM/disk/GPU summary via allowlisted sidecar (Phase 1+)
+- **Containers / stacks** — read-only status for pinned compose directories
+- **Ops inbox** — visibility into `/media/4TB/ops` alerts (read-only)
+- **Tools** — deep links to Portainer, Webmin, Kuma, and related UIs
 
-<details>
-  <summary><b>Very bad translation?</b></summary>
-  We used the AI-based Google translator to generate language files. Of course, there were limitations to the translation depending on the quality of the AI. If you'd like to help improve your language file, open an issue and report your suggestion for improvement. Thank you
-</details>
+## Security never-list
 
-## 🤝 How you can support this project
+Control Tower does **not**:
 
-1. **🌟 Star this repository**: This is the easiest way to support AdminCockpit and it costs nothing.
-2. **⭐ Rate and/or 💬 comment** on AdminCockpit in the [ Nextcloud AppStore](https://apps.nextcloud.com/apps/admincockpit)
-3. **🪲 Report bugs**: Report any bugs you find on the issue tracker.
-4. **📖 Translate**: Help translate AdminCockpit into your language, if the AI-based Google translator generated language files are poorly translated
-5. **📝 Contribute**: Read and file or comment on an issue and ask for guidance or give advice.
+- Mount `/var/run/docker.sock` into the Nextcloud PHP container
+- Offer an interactive container console / shell
+- Replace Webmin or Portainer as break-glass tools
+
+Docker power stays in a least-privilege **sidecar** (read-only in Phase 1). Destructive actions (later phases) use allowlists and the existing ops/Alfred JSON queue.
+
+## Requirements
+
+- Nextcloud **31–34**
+- Deploy into `custom_apps/nc_tower` (folder name = app id)
+- Optional: Control Tower sidecar for host/Docker metrics
+
+## Install / deploy (this host)
+
+```bash
+cd /media/4TB/nc-tower
+make ship            # deploy + gates
+make ship RESTART=1  # when routes/classes were added
+```
+
+Enable if needed:
+
+```bash
+docker exec -u www-data cloud_app php occ app:enable nc_tower
+```
+
+App appears in the Nextcloud navigation as **Control Tower** (admin group).
+
+## Development
+
+| Path | Role |
+|------|------|
+| `appinfo/` | id, routes, version |
+| `lib/` | PHP controllers / services |
+| `js/` | Prebuilt frontend bundles (upstream ships without Vue `src/`) |
+| `sidecar/` | Read-only host/Docker API (optional) |
+| `docs/plans/` | Phase plans |
+| `docs/CAPABILITY_MATRIX.md` | Port inventory (Webmin / Portainer / ops) |
+
+```bash
+make deploy          # copy into cloud_app
+make gate-preflight  # layout + version + API gates
+make bump-patch      # sync info.xml version + CHANGELOG stub
+```
+
+## Screenshots
+
+See `screenshots/` (inherited from Admin Cockpit; will be updated for Control Tower UI).
+
+## License
+
+GNU Affero General Public License v3.0 — see [LICENSE](LICENSE) and [CREDITS.md](CREDITS.md).

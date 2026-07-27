@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "app gweredekaet",
 "could not enable app": "n'hall ket gweredekaat an arload",

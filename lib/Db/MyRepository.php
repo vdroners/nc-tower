@@ -1,13 +1,13 @@
 <?php
 
-namespace OCA\AdminCockpit\Db;
+namespace OCA\NcTower\Db;
 
 use OCP\IDBConnection;
 use OCP\AppFramework\Db\QBMapper;
 
 class MyRepository extends QBMapper {
     public function __construct(IDBConnection $db) {
-        parent::__construct($db, 'oc_admincockpit_items');
+        parent::__construct($db, 'oc_nc_tower_items');
     }
 
     public function findAll(): array {

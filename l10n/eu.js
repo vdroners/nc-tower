@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "aplikazioa gaituta",
 "could not enable app": "Ezin izan da aplikazioa gaitu",

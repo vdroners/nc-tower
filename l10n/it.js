@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "applicazione abilitata",
 "could not enable app": "impossibile abilitare l'app",

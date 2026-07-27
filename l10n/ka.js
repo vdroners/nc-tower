@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "აპლიკაცია ჩართულია",
 "could not enable app": "აპის ჩართვა ვერ მოხერხდა",

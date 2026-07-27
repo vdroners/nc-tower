@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "rakendus on lubatud",
 "could not enable app": "rakendust ei saanud lubada",

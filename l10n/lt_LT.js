@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "programa įjungta",
 "could not enable app": "nepavyko įjungti programos",

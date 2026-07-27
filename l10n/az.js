@@ -1,5 +1,5 @@
 OC.L10N.register(
-    "admincockpit",
+    "nc_tower",
     {
     "app enabled": "proqram aktivdir",
 "could not enable app": "proqramı aktiv edə bilmədi",
