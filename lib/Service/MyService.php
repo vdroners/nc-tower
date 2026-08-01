@@ -63,14 +63,16 @@ class MyService {
     }
     
     function getFolderSize($dir) {
-        $dir = escapeshellarg($dir);
-        $output = shell_exec("du -sb {$dir}");
-        if ($output) {
-            $parts = explode("\t", $output);
-            return (int) $parts[0];
-        }
-        return false;
-    }
+		// Timed du — unbounded du hangs on large Nextcloud datadirs (/media/4TB etc).
+		$dir = escapeshellarg($dir);
+		$timeout = 5;
+		$output = shell_exec("timeout {$timeout} du -sb {$dir} 2>/dev/null");
+		if ($output) {
+			$parts = explode("\t", $output);
+			return (int) $parts[0];
+		}
+		return false;
+	}
 
     function formatBytes($bytes, $precision = 2) {
         $units = ['B', 'KB', 'MB', 'GB', 'TB'];

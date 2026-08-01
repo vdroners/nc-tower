@@ -87,10 +87,15 @@ class UserController extends Controller {
             $userList = [];
             $usrlist = [];
             foreach ($users as $user) {
-                if($user->getLastLogin()) $status = false;
-                else $status = true;
+                if ($user->getLastLogin()) {
+					$status = false;
+				} else {
+					$status = true;
+				}
                 $mids = $user->getManagerUids();
-                if (!$mids) $mids []= null;
+                if (!$mids) {
+					$mids[] = null;
+				}
                 $usrlist[] = $user->getUID();
                 $userList[] = [
                     'uid' => $user->getUID(),
@@ -101,43 +106,46 @@ class UserController extends Controller {
                     'cloudid' => $user->getCloudId(),
                     'quota' => $user->getQuota(),
                     'managerids' => $mids,
-                    'last' => $this->l->l('datetime', $user->getLastLogin()),
-                    'first' => $this->l->l('datetime', $user->getFirstLogin()),
-                    'used' => $this->myService->folderSize($user->getHome()),
+                    'last' => $this->formatLoginTs($user->getLastLogin()),
+                    'first' => $this->formatLoginTs($user->getFirstLogin()),
+					// Never recurse user homes here — hangs on large datadirs.
+                    'used' => $this->quotaUsedLabel($user),
                     'isadmin' => $this->groupManager->isAdmin($user->getUID()),
                     'status' => $status,
                 ];
             }
-            
+
             $groups = $this->groupManager->search('');
             $groupList = [];
-            $grlist = []; 
+            $grlist = [];
             foreach ($groups as $group) {
                 $gusers = $group->getUsers();
-                $guserList = [];                               
+                $guserList = [];
                 $grlist[] = $group->getGID();
-            foreach ($gusers as $guser) {
-                if($guser->getLastLogin()) $status = false;
-                else $status = true;
-                $guserList[] = [
-                    'uid' => $guser->getUID(),
-                    'displayname' => $guser->getDisplayName(),
-                    'lastlogin' => $guser->getLastLogin(),
-                    'firstlogin' => $guser->getFirstLogin(),
-                    'email' => $guser->getEMailAddress(),
-                    'cloudid' => $guser->getCloudId(),
-                    'quota' => $guser->getQuota(),
-                    'managerids' => $guser->getManagerUids(),
-                    'last' => $this->l->l('datetime', $guser->getLastLogin()),
-                    'first' => $this->l->l('datetime', $guser->getFirstLogin()),
-                    'used' => $this->myService->folderSize($guser->getHome()),
-                    'isadmin' => $this->groupManager->isAdmin($guser->getUID()),
-                    'status' => $status,
-                ];
-            }
+				foreach ($gusers as $guser) {
+					if ($guser->getLastLogin()) {
+						$status = false;
+					} else {
+						$status = true;
+					}
+					$guserList[] = [
+						'uid' => $guser->getUID(),
+						'displayname' => $guser->getDisplayName(),
+						'lastlogin' => $guser->getLastLogin(),
+						'firstlogin' => $guser->getFirstLogin(),
+						'email' => $guser->getEMailAddress(),
+						'cloudid' => $guser->getCloudId(),
+						'quota' => $guser->getQuota(),
+						'managerids' => $guser->getManagerUids(),
+						'last' => $this->formatLoginTs($guser->getLastLogin()),
+						'first' => $this->formatLoginTs($guser->getFirstLogin()),
+						'used' => $this->quotaUsedLabel($guser),
+						'isadmin' => $this->groupManager->isAdmin($guser->getUID()),
+						'status' => $status,
+					];
+				}
                 $groupList[] = [
                     'gid' => $group->getGID(),
-                    'gusers' => $gusers,
                     'guserscount' => count($gusers),
                     'guser' => $guserList,
                 ];
@@ -150,22 +158,50 @@ class UserController extends Controller {
                 'groups' => $groupList,
                 'adminCount' => count($adminGroup),
                 'admins' => $adminGroup,
-                'allusers' => $users,
                 'grlist' => $grlist,
                 'usrlist' => $usrlist,
             ]);
 
         } catch (\Throwable $e) {
             $this->logger->error(
-                'NcTower: FATAL ERROR or EXCEPTION in DataController->usercount: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+                'NcTower: FATAL ERROR or EXCEPTION in UserController->usercount: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
                 ['app' => 'nc_tower']
             );
             return new DataResponse([
                 'userCount' => -1,
                 'groupCount' => -1,
+				'error' => $e->getMessage(),
             ], 500);
         }
-    }   
+    }
+
+	/** Avoid IL10N datetime on epoch 0 (never logged in). */
+	private function formatLoginTs(int $ts): string {
+		if ($ts <= 0) {
+			return '—';
+		}
+		return (string) $this->l->l('datetime', $ts);
+	}
+
+	/** Fast quota label — no filesystem walk. */
+	private function quotaUsedLabel(\OCP\IUser $user): string {
+		try {
+			$home = $user->getHome();
+			if (!is_string($home) || $home === '' || !is_dir($home)) {
+				return '—';
+			}
+			// Prefer Nextcloud quota used when available (cheap).
+			if (method_exists($user, 'getQuotaUsage')) {
+				/** @var mixed $usage */
+				$usage = $user->getQuotaUsage();
+				if (is_numeric($usage) && (int) $usage >= 0) {
+					return $this->myService->formatBytes((int) $usage);
+				}
+			}
+		} catch (\Throwable) {
+		}
+		return '—';
+	}   
     
     public function deleteuser($who) {
         try {
@@ -207,7 +243,7 @@ class UserController extends Controller {
                     'admingroups' => $this->myService->admingroup($who),
                     'lastlogin' => $user->getLastLogin(),
                     'firstlogin' => $user->getFirstLogin(),
-                    'used' => $this->myService->folderSize($user->getHome()),
+                    'used' => $this->quotaUsedLabel($user),
                     'status' => true,
                 ];
             

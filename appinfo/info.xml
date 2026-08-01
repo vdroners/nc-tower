@@ -14,7 +14,7 @@ Fork of [Admin Cockpit](https://github.com/zomtec2311/admincockpit) by Wolfgang 
 - Webmin / Portainer remain break-glass for deep OS and full Docker control
 
 See CREDITS.md for attribution.]]></description>
-	<version>1.4.0</version>
+	<version>1.5.0</version>
 	<licence>agpl</licence>
 	<author mail="wtoedt@gmail.com" homepage="https://github.com/zomtec2311/admincockpit">Wolfgang Tödt</author>
 	<author mail="dan@19labs.com" homepage="https://github.com/vdroners/nc-tower">Sarge</author>

@@ -87,14 +87,17 @@ class SystemController extends Controller {
     public function storage(): DataResponse {
         try {
             $folder = $this->config->getSystemValue('datadirectory');
-            $folder1 = $this->myService->getFolderSize($folder);
-            $folder11 = $this->myService->formatBytes($folder1);
-            $folder2 = $this->myService->storagefree($folder);
+			// filesystem free/total only — never `du -sb` the datadir (hangs on large volumes).
+			// UI pie uses folder4/folder3 (used/total) and folder2/folder3 (free/total).
+            $folder2 = (float) $this->myService->storagefree($folder);
             $folder22 = $this->myService->formatBytes($folder2);
-            $folder3 = $this->myService->storageall($folder);
+            $folder3 = (float) $this->myService->storageall($folder);
             $folder33 = $this->myService->formatBytes($folder3);
-            $folder4 = $folder3 - $folder2;
+            $folder4 = max(0.0, $folder3 - $folder2);
             $folder44 = $this->myService->formatBytes($folder4);
+			// folder1 historically = recursive datadir bytes; approximate with FS used.
+            $folder1 = $folder4;
+            $folder11 = $folder44;
 
             return new DataResponse([
                 'folder' => $folder,
@@ -110,7 +113,7 @@ class SystemController extends Controller {
 
         } catch (\Throwable $e) {
             $this->logger->error(
-                'NcTower: FATAL ERROR or EXCEPTION in DataController->storage: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+                'NcTower: FATAL ERROR or EXCEPTION in SystemController->storage: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
                 ['app' => 'nc_tower']
             );
             return new DataResponse([

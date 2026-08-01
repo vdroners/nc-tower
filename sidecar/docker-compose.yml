@@ -1,22 +1,31 @@
 services:
   nc-tower-sidecar:
-    image: python:3.12-slim
+    image: python:3.12-slim-bookworm
     container_name: nc_tower_sidecar
     restart: unless-stopped
     working_dir: /app
-    command: >
-      bash -c "pip install --quiet docker && python /app/app.py"
+    # stdlib only — docker via CLI binary from host mount (no pip)
+    command: ["python", "/app/app.py"]
     environment:
       NC_TOWER_BIND: "0.0.0.0"
       NC_TOWER_PORT: "18765"
       NC_TOWER_SIDECAR_TOKEN: "${NC_TOWER_SIDECAR_TOKEN:-changeme}"
       NC_TOWER_OPS_ROOT: /ops
-      DOCKER_HOST: unix:///var/run/docker.sock
+      NC_TOWER_FAN_HELPER: /usr/local/bin/gpu-fan-helper.py
+      NC_TOWER_NVIDIA_SMI: /usr/bin/nvidia-smi
+      NC_TOWER_SMARTCTL: /usr/sbin/smartctl
+      NC_TOWER_DOCKER: /usr/bin/docker
+      NC_TOWER_CONTAINER_ALLOW: "${NC_TOWER_CONTAINER_ALLOW:-gcs_*,mavlink_gateway}"
+      NC_TOWER_CONTAINER_DENY: "${NC_TOWER_CONTAINER_DENY:-nc_tower_sidecar,cloud_*,portainer,wg-easy,talk_*,*openclaw*}"
     volumes:
       - ./app.py:/app/app.py:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
       - /media/4TB/ops:/ops:ro
       - /media/4TB:/media/4TB:ro
+      - /usr/bin/nvidia-smi:/usr/bin/nvidia-smi:ro
+      - /usr/sbin/smartctl:/usr/sbin/smartctl:ro
+      - /usr/share/webmin/fan-control/gpu-fan-helper.py:/usr/local/bin/gpu-fan-helper.py:ro
     ports:
       - "127.0.0.1:18765:18765"
     networks:

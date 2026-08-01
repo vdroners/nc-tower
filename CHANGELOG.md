@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.5.0] - 2026-07-27
+
+### Added
+- **Ops** tab — host disks, GPU, SMART, GPU fan, containers (stats/ports/logs), per-file stacks, backup summary, ops inbox
+- **Tools** tab — full deep-link set (Portainer, Webmin modules, Kuma, Caddy, Guac, WebODM, Orca, ADSB, MediaMTX, NC); WireGuard → NC WireGuard app note
+- Sidecar mutators: allowlisted container start/stop/restart; pinned compose up/down; GPU fan set-auto / set-all-speeds (clamp ≥20%)
+- Shared Apps|System|Users|Ops|Tools subnav
+- docs/plans/control-tower-ops-ui.md
+
+### Changed
+- Sidecar `docker.sock` mounted read-write (sidecar only; `cloud_app` still sock-free)
+- CAPABILITY_MATRIX synced for 1.5 UI + fan helper; VPN/Ollama marked N/A
+- Dashboard widget title → Control Tower
+
+### Security
+- Container default allow `gcs_*` / `mavlink_gateway`; hard deny `cloud_*`, sidecar, portainer, wg-easy, talk_*, openclaw*
+- Mutators require sidecar token + Nextcloud CSRF; refuse mutators if token empty
+
+## [1.4.2] - 2026-07-27
+
+### Fixed
+- System tab forever-spinners: `/storage` no longer runs `du -sb` on the whole datadirectory (blocked sequential load of sqlinfo + systeminfo). Uses filesystem free/total only; `getFolderSize` also capped with `timeout 5`.
+
+## [1.4.1] - 2026-07-27
+
+### Fixed
+- Forever loading spinner / empty Apps sidebar: `/usercount` no longer recursively walks every user home (`folderSize`) or JSON-encodes raw `IUser` objects — was hanging on large Nextcloud datadirs (~126 users)
+
 ## [1.4.0] - 2026-07-27
 
 ### Added

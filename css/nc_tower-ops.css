@@ -1,0 +1,174 @@
+/* Control Tower Ops / Tools / shared subnav */
+
+.nc-tower-subnav {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem 0.75rem;
+	padding: 0.75rem 1rem;
+	border-bottom: 1px solid var(--color-border, #ddd);
+	background: var(--color-main-background, #fff);
+	margin-bottom: 0.5rem;
+}
+
+.nc-tower-subnav__link {
+	padding: 0.35rem 0.65rem;
+	border-radius: 4px;
+	text-decoration: none;
+	color: var(--color-main-text, #222);
+	font-weight: 600;
+}
+
+.nc-tower-subnav__link.is-active,
+.nc-tower-subnav__link:hover {
+	background: var(--color-primary-element-light, #e8f0fe);
+	color: var(--color-primary-element, #006aa3);
+}
+
+.nc-tower-ops {
+	padding: 0 1rem 2rem;
+	max-width: 1200px;
+}
+
+.nc-tower-ops__header h2 {
+	margin: 0.5rem 0 0.25rem;
+}
+
+.nc-tower-ops__lead {
+	margin: 0 0 1rem;
+	opacity: 0.85;
+}
+
+.nc-tower-ops__banner {
+	padding: 0.65rem 0.85rem;
+	margin-bottom: 1rem;
+	border-radius: 4px;
+	background: #fff3cd;
+	border: 1px solid #ffc107;
+}
+
+.nc-tower-card {
+	border: 1px solid var(--color-border, #ddd);
+	border-radius: 6px;
+	padding: 0.85rem 1rem;
+	margin-bottom: 1rem;
+	background: var(--color-main-background, #fff);
+}
+
+.nc-tower-card h3 {
+	margin: 0 0 0.65rem;
+}
+
+.nc-tower-card__toolbar {
+	margin-bottom: 0.5rem;
+}
+
+.nc-tower-card__toolbar input {
+	width: min(320px, 100%);
+	padding: 0.35rem 0.5rem;
+}
+
+.nc-tower-card__body {
+	overflow-x: auto;
+}
+
+.nc-tower-spinner {
+	opacity: 0.7;
+}
+
+.nc-tower-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9rem;
+}
+
+.nc-tower-table th,
+.nc-tower-table td {
+	text-align: left;
+	padding: 0.35rem 0.45rem;
+	border-bottom: 1px solid var(--color-border, #eee);
+	vertical-align: top;
+}
+
+.nc-tower-table button {
+	margin: 0 0.15rem 0.15rem 0;
+}
+
+.nc-tower-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin-bottom: 0.75rem;
+}
+
+.nc-tower-chip {
+	padding: 0.25rem 0.55rem;
+	border-radius: 999px;
+	background: var(--color-background-dark, #f0f0f0);
+	font-size: 0.85rem;
+}
+
+.nc-tower-muted {
+	opacity: 0.75;
+	font-size: 0.85rem;
+}
+
+.nc-tower-error {
+	color: #b00020;
+}
+
+.nc-tower-ok {
+	color: #1b7f3a;
+}
+
+.nc-tower-warn {
+	color: #9a6700;
+}
+
+.nc-tower-toast {
+	position: fixed;
+	right: 1rem;
+	bottom: 1rem;
+	z-index: 9999;
+	padding: 0.75rem 1rem;
+	background: #222;
+	color: #fff;
+	border-radius: 6px;
+	max-width: 420px;
+}
+
+.nc-tower-tools-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+	gap: 0.75rem;
+}
+
+.nc-tower-tool-card {
+	border: 1px solid var(--color-border, #ddd);
+	border-radius: 6px;
+	padding: 0.85rem;
+}
+
+.nc-tower-tool-card a {
+	font-weight: 700;
+}
+
+.nc-tower-preview {
+	max-height: 8rem;
+	overflow: auto;
+	font-size: 0.75rem;
+	background: var(--color-background-dark, #f7f7f7);
+	padding: 0.4rem;
+	white-space: pre-wrap;
+}
+
+#nc-tower-logs {
+	width: min(900px, 92vw);
+	max-height: 80vh;
+}
+
+#nc-tower-logs-body {
+	white-space: pre-wrap;
+	font-size: 0.8rem;
+	max-height: 60vh;
+	overflow: auto;
+}
