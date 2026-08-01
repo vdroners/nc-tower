@@ -91,9 +91,18 @@ CONTAINER_LOG_ALLOW = _csv_env(
 ) or list(CONTAINER_ALLOW)
 SYSTEMD_ALLOW = _csv_env(
     "SYSTEMD_ALLOW",
-    "docker.service,containerd.service,nvidia-persistenced.service",
+    "docker.service,openclaw-gateway.service,fancontrol.service,cron.service,ssh.service",
     "NC_TOWER_SYSTEMD_ALLOW",
 )
+# User-bus units (linger / --user). Matched by exact unit name.
+SYSTEMD_USER_UNITS = set(
+    _csv_env(
+        "SYSTEMD_USER_UNITS",
+        "openclaw-gateway.service",
+        "NC_TOWER_SYSTEMD_USER_UNITS",
+    )
+)
+SYSTEMD_USER = os.environ.get("SYSTEMD_USER") or os.environ.get("NC_TOWER_SYSTEMD_USER") or "vdroners"
 IMAGE_PULL_ALLOW = _csv_env(
     "IMAGE_PULL_ALLOW",
     "ghcr.io/vdroners/*,docker.io/*,library/*,ollama/ollama:*",
@@ -631,10 +640,18 @@ def host_chassis_fan() -> dict[str, Any]:
 
 
 def host_packages() -> dict[str, Any]:
-    apt = _which("apt")
-    if not apt:
-        return {"unavailable": True, "reason": "apt_missing", "packages": []}
-    result = _run([apt, "list", "--upgradable"], timeout=60, max_output=150_000)
+    nsenter = _nsenter_bin()
+    if nsenter:
+        result = _run(
+            [nsenter, "--mount=/proc/1/ns/mnt", "--", "/usr/bin/apt", "list", "--upgradable"],
+            timeout=60,
+            max_output=150_000,
+        )
+    else:
+        apt = _which("apt")
+        if not apt:
+            return {"unavailable": True, "reason": "apt_missing", "packages": []}
+        result = _run([apt, "list", "--upgradable"], timeout=60, max_output=150_000)
     packages = []
     for line in result["stdout"].splitlines():
         if not line or line.startswith("Listing"):
@@ -661,10 +678,18 @@ def host_packages() -> dict[str, Any]:
 
 
 def host_processes() -> dict[str, Any]:
-    ps = _which("ps")
-    if not ps:
-        return {"unavailable": True, "reason": "ps_missing", "processes": []}
-    result = _run([ps, "aux", "--sort=-%cpu"], timeout=10, max_output=100_000)
+    nsenter = _nsenter_bin()
+    if nsenter:
+        result = _run(
+            [nsenter, "--mount=/proc/1/ns/mnt", "--", "/bin/ps", "aux", "--sort=-%cpu"],
+            timeout=10,
+            max_output=100_000,
+        )
+    else:
+        ps = _which("ps")
+        if not ps:
+            return {"unavailable": True, "reason": "ps_missing", "processes": []}
+        result = _run([ps, "aux", "--sort=-%cpu"], timeout=10, max_output=100_000)
     lines = result["stdout"].splitlines()
     header = lines[0].split(None, 10) if lines else []
     processes = []
@@ -675,26 +700,46 @@ def host_processes() -> dict[str, Any]:
     return {"unavailable": result["exit"] != 0, "processes": processes, "ts": time.time()}
 
 
-def _systemctl_bin() -> str | None:
-    # With pid: host, systemctl talks to the real host systemd.
-    path = _which("systemctl") or "/usr/bin/systemctl"
+def _nsenter_bin() -> str | None:
+    path = _which("nsenter") or "/usr/bin/nsenter"
     return path if Path(path).is_file() else None
 
 
+def _systemctl_argv(*args: str, unit: str | None = None) -> list[str] | None:
+    """Run host systemctl via mount-namespace enter.
+
+    Container systemctl sees /.dockerenv and refuses ("Running in chroot")
+    even with pid: host and /run mounted. Host binary under host mount ns works.
+    """
+    nsenter = _nsenter_bin()
+    if not nsenter:
+        return None
+    host_systemctl = "/bin/systemctl"
+    cmd = [nsenter, "--mount=/proc/1/ns/mnt", "--", host_systemctl]
+    if unit and unit in SYSTEMD_USER_UNITS:
+        cmd += [f"--machine={SYSTEMD_USER}@", "--user"]
+    cmd.extend(args)
+    return cmd
+
+
 def host_systemd() -> dict[str, Any]:
-    systemctl = _systemctl_bin()
-    if not systemctl:
-        return {"unavailable": True, "reason": "systemctl_missing", "units": []}
+    if not _nsenter_bin():
+        return {"unavailable": True, "reason": "nsenter_missing", "units": []}
     units = []
     for unit in SYSTEMD_ALLOW:
-        active = _run([systemctl, "is-active", unit], timeout=8)
-        enabled = _run([systemctl, "is-enabled", unit], timeout=8)
+        active_cmd = _systemctl_argv("is-active", unit, unit=unit)
+        enabled_cmd = _systemctl_argv("is-enabled", unit, unit=unit)
+        if not active_cmd or not enabled_cmd:
+            continue
+        active = _run(active_cmd, timeout=8)
+        enabled = _run(enabled_cmd, timeout=8)
         units.append(
             {
                 "unit": unit,
                 "active": active["stdout"].strip() or "unknown",
                 "enabled": enabled["stdout"].strip() or "unknown",
                 "restartable": True,
+                "user": unit in SYSTEMD_USER_UNITS,
             }
         )
     return {"unavailable": False, "units": units, "items": units, "ts": time.time()}
@@ -702,20 +747,37 @@ def host_systemd() -> dict[str, Any]:
 
 def host_cron() -> dict[str, Any]:
     root_lines: list[str] = []
-    crontab = _which("crontab")
     error = None
-    if crontab:
-        result = _run([crontab, "-l", "-u", "root"], timeout=8)
-        if result["exit"] == 0:
-            root_lines = [
-                line for line in result["stdout"].splitlines() if line.strip() and not line.lstrip().startswith("#")
-            ]
-        elif "no crontab" not in result["stderr"].lower():
-            error = result["stderr"].strip()
+    nsenter = _nsenter_bin()
+    if nsenter:
+        result = _run(
+            [nsenter, "--mount=/proc/1/ns/mnt", "--", "/usr/bin/crontab", "-l", "-u", "root"],
+            timeout=8,
+        )
+    else:
+        crontab = _which("crontab")
+        result = _run([crontab, "-l", "-u", "root"], timeout=8) if crontab else {"exit": 127, "stdout": "", "stderr": "crontab_missing"}
+    if result["exit"] == 0:
+        root_lines = [
+            line for line in result["stdout"].splitlines() if line.strip() and not line.lstrip().startswith("#")
+        ]
+    elif "no crontab" not in (result.get("stderr") or "").lower():
+        error = (result.get("stderr") or "").strip() or None
     cron_d = []
-    cron_dir = Path("/etc/cron.d")
-    if cron_dir.is_dir():
-        cron_d = sorted(p.name for p in cron_dir.iterdir() if p.is_file() and not p.name.startswith("."))
+    # Prefer host cron.d via nsenter listing when available
+    if nsenter:
+        listing = _run(
+            [nsenter, "--mount=/proc/1/ns/mnt", "--", "/bin/ls", "-1", "/etc/cron.d"],
+            timeout=8,
+        )
+        if listing["exit"] == 0:
+            cron_d = sorted(
+                name for name in listing["stdout"].splitlines() if name and not name.startswith(".")
+            )
+    if not cron_d:
+        cron_dir = Path("/etc/cron.d")
+        if cron_dir.is_dir():
+            cron_d = sorted(p.name for p in cron_dir.iterdir() if p.is_file() and not p.name.startswith("."))
     return {"root_crontab": root_lines, "cron_d_files": cron_d, "error": error, "ts": time.time()}
 
 
@@ -1273,10 +1335,10 @@ def host_systemd_restart(body: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(unit, str) or unit not in SYSTEMD_ALLOW:
         audit(f"systemd restart unit={unit} denied")
         return {"ok": False, "error": "forbidden", "http": 403}
-    systemctl = _systemctl_bin()
-    if not systemctl:
-        return {"ok": False, "error": "systemctl_missing", "http": 503}
-    result = _run([systemctl, "restart", unit], timeout=90)
+    cmd = _systemctl_argv("restart", unit, unit=unit)
+    if not cmd:
+        return {"ok": False, "error": "nsenter_missing", "http": 503}
+    result = _run(cmd, timeout=90)
     audit(f"systemd restart unit={unit} exit={result['exit']}")
     return {"ok": result["exit"] == 0, "unit": unit, **result}
 
