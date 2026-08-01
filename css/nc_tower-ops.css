@@ -172,3 +172,11 @@
 	max-height: 60vh;
 	overflow: auto;
 }
+
+.nc-tower-actions button { margin: 0 0.15rem 0.15rem 0; font-size: 0.8rem; }
+.nc-tower-dialog-bar { display: flex; gap: 1rem; align-items: center; margin-bottom: 0.5rem; }
+#nc-tower-exec, #nc-tower-inspect { max-width: min(900px, 95vw); width: 90vw; }
+#nc-tower-exec-out, #nc-tower-inspect-body {
+	max-height: 60vh; overflow: auto; white-space: pre-wrap; font-size: 0.8rem;
+}
+#nc-tower-exec-cmd { width: 100%; font-family: monospace; }

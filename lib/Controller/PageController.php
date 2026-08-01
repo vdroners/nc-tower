@@ -78,6 +78,12 @@ class PageController extends Controller {
 	}
 
 	#[NoCSRFRequired]
+	#[OpenAPI(OpenAPI::SCOPE_IGNORE)]
+	public function host(): TemplateResponse {
+		return new TemplateResponse(Application::APP_ID, 'host');
+	}
+
+	#[NoCSRFRequired]
 	public function userlistget(string $who = '', string $guser = '', string $gid = ''): TemplateResponse {
 		if (empty($guser)) {
 			$response = $this->userController->usercount();

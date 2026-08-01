@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.8.0] - 2026-08-01
+
+### Added
+- **Host** tab — mounts, package updates, top processes, systemd allowlisted restart, cron RO, network glance
+- Portainer day-ops close: docker info/df/events, images list+pull, volumes/networks RO, live log follow (2s poll), redacted inspect, allowlisted kill/recreate/exec
+- Stack restart / pull / rebuild on pinned compose dirs (incl. nc-tower, nc-print, ollama)
+- Backup **run now** via allowlisted `/ops/bin/webmin/backup-enhanced.sh`; CRITICAL inbox surface
+- Chassis fan RO; richer host summary (CPU%, temp, swap, ifaces, unhealthy containers); SMART model/temp/hours + NAS
+- Sidecar audit log volume; `docs/plans/control-tower-standalone.md`
+
+### Changed
+- Sidecar privileged host agent with device/sysfs mounts for GPU/SMART
+- Default container allow includes sitl/simcam/adsb patterns; optional RO-log tier
+- CAPABILITY_MATRIX rewritten with Webmin + Portainer disposition tables
+- Version jump 1.5 → 1.8 covers Portainer parity + Webmin custom close + Host hybrid
+
+### Security
+- Rotated sidecar token off `changeme`; PHP default empty (fail closed); compose loads `sidecar/.env`
+- Deny-first allowlists unchanged for `cloud_*` / sidecar / portainer / openclaw
+- Explicit never: host shell, system/volume prune, unrestricted docker mutate
+- Removed leftover `docker.sock` RO mount from host `cloud` compose (`cloud_app`) — Docker only via sidecar
+
 ## [1.5.0] - 2026-07-27
 
 ### Added

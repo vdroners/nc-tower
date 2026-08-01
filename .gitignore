@@ -1,0 +1,4 @@
+sidecar/.env
+sidecar/__pycache__/
+*.pyc
+.DS_Store

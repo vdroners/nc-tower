@@ -1,8 +1,8 @@
 # Control Tower
 
-**Version 1.5.0**
+**Version 1.8.0**
 
-Control Tower is the Nextcloud orchestrator for this GCS host — admin, stacks, health, and ops inbox in one place.
+Control Tower is the Nextcloud orchestrator for this GCS host — admin, stacks, host health, Docker day-ops, and ops inbox in one place.
 
 > **Fork of [Admin Cockpit](https://github.com/zomtec2311/admincockpit)** by Wolfgang Tödt — rebranded and extended. See [CREDITS.md](CREDITS.md).
 
@@ -20,30 +20,35 @@ Git remotes: `origin` → vdroners/nc-tower, `upstream` → zomtec2311/admincock
 ## Features
 
 - **Nextcloud admin** — users, groups, apps, system overview (Admin Cockpit home kept)
-- **Ops tab** — host disks, GPU, SMART, GPU fan, containers (stats/ports/logs + allowlisted start/stop/restart), per-file compose up/down, backup summary, ops inbox
+- **Ops tab** — host/GPU/SMART/fans, Docker engine df/events, containers (logs follow, inspect, allowlisted start/stop/restart/kill/recreate/exec), stacks (up/down/restart/pull/rebuild), images/volumes/networks RO, backup run, CRITICAL inbox
+- **Host tab** — mounts, package updates, top processes, systemd allowlisted restart, cron RO, network glance
 - **Tools tab** — deep links to Portainer, Webmin modules, Kuma, Caddy, Guac, WebODM, Orca, ADSB, MediaMTX, NC; WireGuard via **NC WireGuard app**
-- **Sidecar** — Docker + host metrics; mutators allowlisted (`gcs_*`, `mavlink_gateway` by default; `cloud_*` denied)
+- **Sidecar** — privileged host agent; deny-first container allowlist; no `docker.sock` in PHP
 
 ## Security never-list
 
 Control Tower does **not**:
 
 - Mount `/var/run/docker.sock` into the Nextcloud PHP container (`cloud_app`)
-- Offer an interactive container console / shell
-- Replace Webmin or Portainer as break-glass tools
-- Manage VPN (use NC WireGuard app) or Ollama
+- Offer a host shell / filemin / unrestricted Portainer clone
+- Run `docker system prune` or volume prune
+- Manage VPN peers (NC WireGuard app) or Ollama model pull/delete
 
-Sidecar may mount docker.sock **read-write** for allowlisted actions only.
+Allowlisted **container exec** (one-shot argv) is supported; host shell is not.
 
 ### Sidecar token
 
 ```bash
-# Prefer a strong token in production (preflight warns if still changeme)
-docker exec -u www-data cloud_app php occ config:system:set nc_tower_sidecar_token --value='YOUR_TOKEN'
-# Match sidecar env NC_TOWER_SIDECAR_TOKEN
+TOKEN=$(openssl rand -hex 32)
+printf 'NC_TOWER_SIDECAR_TOKEN=%s\n' "$TOKEN" > sidecar/.env
+chmod 600 sidecar/.env
+docker exec -u www-data cloud_app php occ config:system:set nc_tower_sidecar_token --value="$TOKEN"
+make sidecar-up
 ```
 
-Optional env: `NC_TOWER_CONTAINER_ALLOW`, `NC_TOWER_CONTAINER_DENY`, `NC_TOWER_COMPOSE_DIRS`.
+Optional env: `NC_TOWER_CONTAINER_ALLOW`, `NC_TOWER_CONTAINER_LOG_ALLOW`, `NC_TOWER_CONTAINER_DENY`, `NC_TOWER_COMPOSE_DIRS`, `NC_TOWER_SYSTEMD_ALLOW`, `NC_TOWER_IMAGE_PULL_ALLOW`.
+
+See [docs/CAPABILITY_MATRIX.md](docs/CAPABILITY_MATRIX.md) and [docs/plans/control-tower-standalone.md](docs/plans/control-tower-standalone.md).
 
 ## Requirements
 
@@ -55,7 +60,7 @@ Optional env: `NC_TOWER_CONTAINER_ALLOW`, `NC_TOWER_CONTAINER_DENY`, `NC_TOWER_C
 
 ```bash
 cd /media/4TB/nc-tower
-make ship RESTART=1   # new routes/classes in 1.5.0
+make ship RESTART=1   # new routes/classes — restart required
 ```
 
 Enable if needed:

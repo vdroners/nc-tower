@@ -13,7 +13,7 @@ use Psr\Log\LoggerInterface;
 
 /**
  * Proxies Control Tower sidecar (RO + allowlisted mutators).
- * Never talks to docker.sock from PHP.
+ * Docker engine access is only via the sidecar HTTP API.
  */
 class TowerController extends Controller {
 	public function __construct(
@@ -33,11 +33,12 @@ class TowerController extends Controller {
 	}
 
 	private function sidecarToken(): string {
-		return $this->config->getSystemValueString('nc_tower_sidecar_token', 'changeme');
+		// Empty default — fail closed if unset in config.php
+		return $this->config->getSystemValueString('nc_tower_sidecar_token', '');
 	}
 
 	/** @param array<string,string> $extraHeaders */
-	private function requestJson(string $method, string $path, ?array $body = null): DataResponse {
+	private function requestJson(string $method, string $path, ?array $body = null, int $timeout = 0): DataResponse {
 		$url = $this->sidecarBase() . $path;
 		$token = $this->sidecarToken();
 		$headers = ['Accept: application/json'];
@@ -52,9 +53,12 @@ class TowerController extends Controller {
 		if ($ch === false) {
 			return new DataResponse(['error' => 'curl_init failed', 'ok' => false], 502);
 		}
+		if ($timeout <= 0) {
+			$timeout = ($method === 'POST' ? 130 : 25);
+		}
 		$opts = [
 			CURLOPT_RETURNTRANSFER => true,
-			CURLOPT_TIMEOUT => ($method === 'POST' ? 130 : 25),
+			CURLOPT_TIMEOUT => $timeout,
 			CURLOPT_HTTPHEADER => $headers,
 			CURLOPT_CUSTOMREQUEST => $method,
 		];
@@ -96,8 +100,18 @@ class TowerController extends Controller {
 		return new DataResponse($data, $code ?: 200);
 	}
 
-	private function getJson(string $path): DataResponse {
-		return $this->requestJson('GET', $path);
+	private function getJson(string $path, int $timeout = 25): DataResponse {
+		return $this->requestJson('GET', $path, null, $timeout);
+	}
+
+	/** @return array<string,mixed> */
+	private function jsonBody(): array {
+		$raw = file_get_contents('php://input');
+		if (!is_string($raw) || $raw === '') {
+			return [];
+		}
+		$data = json_decode($raw, true);
+		return is_array($data) ? $data : [];
 	}
 
 	#[NoCSRFRequired]
@@ -117,12 +131,47 @@ class TowerController extends Controller {
 
 	#[NoCSRFRequired]
 	public function hostSmart(): DataResponse {
-		return $this->getJson('/host/smart');
+		return $this->getJson('/host/smart', 60);
 	}
 
 	#[NoCSRFRequired]
 	public function hostFan(): DataResponse {
 		return $this->getJson('/host/fan');
+	}
+
+	#[NoCSRFRequired]
+	public function hostChassisFan(): DataResponse {
+		return $this->getJson('/host/chassis-fan');
+	}
+
+	#[NoCSRFRequired]
+	public function hostMounts(): DataResponse {
+		return $this->getJson('/host/mounts');
+	}
+
+	#[NoCSRFRequired]
+	public function hostPackages(): DataResponse {
+		return $this->getJson('/host/packages', 60);
+	}
+
+	#[NoCSRFRequired]
+	public function hostProc(): DataResponse {
+		return $this->getJson('/host/proc');
+	}
+
+	#[NoCSRFRequired]
+	public function hostNet(): DataResponse {
+		return $this->getJson('/host/net');
+	}
+
+	#[NoCSRFRequired]
+	public function hostSystemd(): DataResponse {
+		return $this->getJson('/host/systemd');
+	}
+
+	#[NoCSRFRequired]
+	public function hostCron(): DataResponse {
+		return $this->getJson('/host/cron');
 	}
 
 	#[NoCSRFRequired]
@@ -132,9 +181,60 @@ class TowerController extends Controller {
 
 	#[NoCSRFRequired]
 	public function containerLogs(string $name): DataResponse {
-		$tail = (int) $this->request->getParam('tail', '100');
-		$tail = max(1, min($tail, 500));
-		return $this->getJson('/containers/' . rawurlencode($name) . '/logs?tail=' . $tail);
+		$tail = (int) $this->request->getParam('tail', '200');
+		$tail = max(1, min($tail, 2000));
+		$since = (string) $this->request->getParam('since', '');
+		$q = '/containers/' . rawurlencode($name) . '/logs?tail=' . $tail;
+		if ($since !== '') {
+			$q .= '&since=' . rawurlencode($since);
+		}
+		return $this->getJson($q);
+	}
+
+	#[NoCSRFRequired]
+	public function containerInspect(string $name): DataResponse {
+		return $this->getJson('/containers/' . rawurlencode($name) . '/inspect');
+	}
+
+	#[NoCSRFRequired]
+	public function dockerInfo(): DataResponse {
+		return $this->getJson('/docker/info');
+	}
+
+	#[NoCSRFRequired]
+	public function dockerDf(): DataResponse {
+		return $this->getJson('/docker/df');
+	}
+
+	#[NoCSRFRequired]
+	public function dockerEvents(): DataResponse {
+		$since = (string) $this->request->getParam('since', '15m');
+		return $this->getJson('/docker/events?since=' . rawurlencode($since), 40);
+	}
+
+	#[NoCSRFRequired]
+	public function dockerImages(): DataResponse {
+		return $this->getJson('/docker/images', 40);
+	}
+
+	#[NoCSRFRequired]
+	public function dockerVolumes(): DataResponse {
+		$name = (string) $this->request->getParam('name', '');
+		$path = '/docker/volumes';
+		if ($name !== '') {
+			$path .= '?name=' . rawurlencode($name);
+		}
+		return $this->getJson($path);
+	}
+
+	#[NoCSRFRequired]
+	public function dockerNetworks(): DataResponse {
+		$name = (string) $this->request->getParam('name', '');
+		$path = '/docker/networks';
+		if ($name !== '') {
+			$path .= '?name=' . rawurlencode($name);
+		}
+		return $this->getJson($path);
 	}
 
 	#[NoCSRFRequired]
@@ -150,34 +250,44 @@ class TowerController extends Controller {
 	/** CSRF required — mutator */
 	public function containerAction(string $name, string $action): DataResponse {
 		$action = strtolower($action);
-		if (!in_array($action, ['start', 'stop', 'restart'], true)) {
+		if (!in_array($action, ['start', 'stop', 'restart', 'kill'], true)) {
 			return new DataResponse(['ok' => false, 'error' => 'invalid_action'], 400);
 		}
 		return $this->requestJson('POST', '/containers/' . rawurlencode($name) . '/' . $action, []);
 	}
 
-	/** @return array<string,mixed> */
-	private function jsonBody(): array {
-		$raw = file_get_contents('php://input');
-		if (!is_string($raw) || $raw === '') {
-			return [];
+	/** CSRF required */
+	public function containerRecreate(string $name): DataResponse {
+		$body = $this->jsonBody();
+		return $this->requestJson('POST', '/containers/' . rawurlencode($name) . '/recreate', [
+			'pull' => (bool) ($body['pull'] ?? false),
+		], 180);
+	}
+
+	/** CSRF required */
+	public function containerExec(string $name): DataResponse {
+		$body = $this->jsonBody();
+		return $this->requestJson('POST', '/containers/' . rawurlencode($name) . '/exec', $body, 90);
+	}
+
+	/** CSRF required */
+	public function stackAction(string $action): DataResponse {
+		$action = strtolower($action);
+		if (!in_array($action, ['up', 'down', 'restart', 'pull', 'rebuild'], true)) {
+			return new DataResponse(['ok' => false, 'error' => 'invalid_action'], 400);
 		}
-		$data = json_decode($raw, true);
-		return is_array($data) ? $data : [];
+		$body = $this->jsonBody();
+		$file = (string) ($body['file'] ?? $this->request->getParam('file', ''));
+		return $this->requestJson('POST', '/stacks/' . $action, ['file' => $file], 180);
 	}
 
-	/** CSRF required */
+	/** CSRF required — legacy aliases */
 	public function stackUp(): DataResponse {
-		$body = $this->jsonBody();
-		$file = (string) ($body['file'] ?? $this->request->getParam('file', ''));
-		return $this->requestJson('POST', '/stacks/up', ['file' => $file]);
+		return $this->stackAction('up');
 	}
 
-	/** CSRF required */
 	public function stackDown(): DataResponse {
-		$body = $this->jsonBody();
-		$file = (string) ($body['file'] ?? $this->request->getParam('file', ''));
-		return $this->requestJson('POST', '/stacks/down', ['file' => $file]);
+		return $this->stackAction('down');
 	}
 
 	/** CSRF required */
@@ -196,6 +306,27 @@ class TowerController extends Controller {
 		return $this->requestJson('POST', '/host/fan', $payload);
 	}
 
+	/** CSRF required */
+	public function imagePull(): DataResponse {
+		$body = $this->jsonBody();
+		return $this->requestJson('POST', '/docker/images/pull', [
+			'image' => (string) ($body['image'] ?? ''),
+		], 300);
+	}
+
+	/** CSRF required */
+	public function backupRun(): DataResponse {
+		return $this->requestJson('POST', '/ops/backup/run', [], 600);
+	}
+
+	/** CSRF required */
+	public function systemdRestart(): DataResponse {
+		$body = $this->jsonBody();
+		return $this->requestJson('POST', '/host/systemd/restart', [
+			'unit' => (string) ($body['unit'] ?? ''),
+		]);
+	}
+
 	#[NoCSRFRequired]
 	public function tools(): DataResponse {
 		$baseWebmin = 'https://10.0.0.84:10000';
@@ -209,7 +340,7 @@ class TowerController extends Controller {
 					],
 				],
 				[
-					'title' => 'Host (Webmin modules)',
+					'title' => 'Host (Webmin break-glass)',
 					'tools' => [
 						['title' => 'System Health', 'url' => $baseWebmin . '/system-health/'],
 						['title' => 'Docker', 'url' => $baseWebmin . '/docker/'],
@@ -217,7 +348,7 @@ class TowerController extends Controller {
 						['title' => 'NVIDIA GPU', 'url' => $baseWebmin . '/nvidia-gpu/'],
 						['title' => 'SMART Health', 'url' => $baseWebmin . '/smart-health/'],
 						['title' => 'Backup Mgr', 'url' => $baseWebmin . '/backup-mgr/'],
-						['title' => 'Fan Control (chassis)', 'url' => $baseWebmin . '/fan-control/'],
+						['title' => 'Fan Control (chassis PWM)', 'url' => $baseWebmin . '/fan-control/'],
 					],
 				],
 				[
@@ -244,7 +375,6 @@ class TowerController extends Controller {
 					],
 				],
 			],
-			// Flat list for older callers
 			'tools' => [
 				['title' => 'Portainer', 'url' => 'https://10.0.0.84:9443'],
 				['title' => 'Webmin', 'url' => $baseWebmin],

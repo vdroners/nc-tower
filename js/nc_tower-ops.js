@@ -1,10 +1,14 @@
 /**
- * Control Tower Ops + Tools UI (owned; not Admin Cockpit bundle).
+ * Control Tower Ops / Host / Tools UI (owned; not Admin Cockpit bundle).
  */
 (function () {
 	'use strict';
 
 	const BASE = OC.generateUrl('/apps/nc_tower');
+	const REFRESH_MS = 12000;
+	let logFollowTimer = null;
+	let logFollowName = null;
+	let logSince = '';
 
 	function token() {
 		return (window.OC && OC.requestToken) ? OC.requestToken : '';
@@ -102,17 +106,51 @@
 				if (x.error) return '<li>' + esc(x.path) + ': ' + esc(x.error) + '</li>';
 				return '<li><strong>' + esc(x.path) + '</strong> ' +
 					esc(fmtBytes(x.used_b)) + ' / ' + esc(fmtBytes(x.total_b)) +
-					' (' + esc(x.used_pct) + '% used, ' + esc(fmtBytes(x.free_b)) + ' free)</li>';
+					' (' + esc(x.used_pct) + '% used)</li>';
 			}).join('');
+			const unhealthy = (d.unhealthy_containers || []).map((n) => esc(n)).join(', ') || 'none';
+			const ifaces = (d.ifaces || []).slice(0, 8).map((i) => {
+				if (typeof i === 'string') return esc(i);
+				return esc(i.name || i.ifname || '') + ' ' + esc((i.addr || i.addrs || []).join?.(',') || i.address || '');
+			}).join('; ');
 			setBody('host',
 				'<div class="nc-tower-chips">' +
+				'<span class="nc-tower-chip">CPU ' + esc(d.cpu_pct != null ? d.cpu_pct + '%' : '—') + '</span>' +
 				'<span class="nc-tower-chip">load ' + esc((d.loadavg || []).join(' / ')) + '</span>' +
-				'<span class="nc-tower-chip">mem avail ' + esc(d.mem_available || '—') + '</span>' +
+				'<span class="nc-tower-chip">mem ' + esc(d.mem_available || '—') + ' avail</span>' +
+				'<span class="nc-tower-chip">swap ' + esc(d.swap_available || d.swap_free || '—') + '</span>' +
+				'<span class="nc-tower-chip">pkg temp ' + esc(d.package_temp_c != null ? d.package_temp_c + '°C' : '—') + '</span>' +
 				'<span class="nc-tower-chip">uptime ' + esc(Math.round(d.uptime_s || 0)) + 's</span>' +
-				'</div><ul>' + disks + '</ul>');
+				'</div><ul>' + disks + '</ul>' +
+				'<p class="nc-tower-muted">Unhealthy: ' + unhealthy + '</p>' +
+				'<p class="nc-tower-muted">Ifaces: ' + (ifaces || '—') + '</p>');
 		} catch (e) {
 			setBody('host', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
-			setBanner('Sidecar unavailable or host metrics failed — check nc_tower_sidecar.');
+			setBanner('Sidecar unavailable or host metrics failed — check nc_tower_sidecar + token.');
+		}
+	}
+
+	async function loadDockerEngine() {
+		try {
+			const [info, df] = await Promise.all([
+				apiGet('/tower/docker/info'),
+				apiGet('/tower/docker/df'),
+			]);
+			let html = '<div class="nc-tower-chips">';
+			html += '<span class="nc-tower-chip">server ' + esc(info.Name || info.name || info.ServerVersion || '—') + '</span>';
+			html += '<span class="nc-tower-chip">ver ' + esc(info.ServerVersion || info.server_version || '—') + '</span>';
+			html += '<span class="nc-tower-chip">containers ' + esc(info.Containers ?? info.containers ?? '—') + '</span>';
+			html += '<span class="nc-tower-chip">images ' + esc(info.Images ?? info.images ?? '—') + '</span>';
+			html += '</div>';
+			const rows = (df.Images || df.images || df.layers || df.items || []);
+			if (Array.isArray(df) || df.raw) {
+				html += '<pre class="nc-tower-preview">' + esc(JSON.stringify(df, null, 2).slice(0, 2500)) + '</pre>';
+			} else {
+				html += '<pre class="nc-tower-preview">' + esc(JSON.stringify(df, null, 2).slice(0, 2500)) + '</pre>';
+			}
+			setBody('docker-engine', html);
+		} catch (e) {
+			setBody('docker-engine', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
 		}
 	}
 
@@ -126,9 +164,14 @@
 			const rows = (d.gpus || []).map((g) =>
 				'<tr><td>' + esc(g.name) + '</td><td>' + esc(g.util_pct) + '%</td><td>' +
 				esc(g.mem_used_mib) + ' / ' + esc(g.mem_total_mib) + ' MiB</td><td>' +
-				esc(g.temp_c) + '°C</td><td>' + esc(g.fan_pct) + '%</td></tr>').join('');
-			setBody('gpu', '<table class="nc-tower-table"><thead><tr><th>Name</th><th>Util</th><th>Mem</th><th>Temp</th><th>Fan</th></tr></thead><tbody>' +
-				(rows || '<tr><td colspan="5">No GPUs</td></tr>') + '</tbody></table>');
+				esc(g.temp_c) + '°C</td><td>' + esc(g.fan_pct) + '%</td><td>' +
+				esc(g.power_w != null ? g.power_w : (g.power_draw || '—')) + '</td></tr>').join('');
+			const procs = (d.processes || []).slice(0, 12).map((p) =>
+				'<li>' + esc(p.pid || '') + ' ' + esc(p.process_name || p.name || '') +
+				' ' + esc(p.used_memory || p.mem || '') + '</li>').join('');
+			setBody('gpu', '<table class="nc-tower-table"><thead><tr><th>Name</th><th>Util</th><th>Mem</th><th>Temp</th><th>Fan</th><th>Power</th></tr></thead><tbody>' +
+				(rows || '<tr><td colspan="6">No GPUs</td></tr>') + '</tbody></table>' +
+				(procs ? '<ul>' + procs + '</ul>' : ''));
 		} catch (e) {
 			setBody('gpu', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
 		}
@@ -143,10 +186,18 @@
 			}
 			const rows = (d.disks || []).map((x) => {
 				const cls = x.health === 'PASS' ? 'nc-tower-ok' : (x.health === 'FAIL' ? 'nc-tower-error' : 'nc-tower-warn');
-				return '<tr><td>' + esc(x.device) + '</td><td class="' + cls + '">' + esc(x.health) + '</td></tr>';
+				return '<tr><td>' + esc(x.device) + '</td><td class="' + cls + '">' + esc(x.health) +
+					'</td><td>' + esc(x.model || '—') + '</td><td>' + esc(x.temp_c != null ? x.temp_c + '°C' : '—') +
+					'</td><td>' + esc(x.power_on_hours != null ? x.power_on_hours : '—') + '</td></tr>';
 			}).join('');
-			setBody('smart', '<table class="nc-tower-table"><thead><tr><th>Device</th><th>Health</th></tr></thead><tbody>' +
-				(rows || '<tr><td colspan="2">No disks</td></tr>') + '</tbody></table>' +
+			const nas = (d.nas_mounts || []).map((n) =>
+				'<li>' + esc(n.path || n.mountpoint || '') + ' — ' +
+				(n.ok || n.available ? '<span class="nc-tower-ok">OK</span>' : '<span class="nc-tower-error">down</span>') +
+				' ' + esc(n.fstype || '') + '</li>').join('');
+			setBody('smart',
+				'<table class="nc-tower-table"><thead><tr><th>Device</th><th>Health</th><th>Model</th><th>Temp</th><th>Hours</th></tr></thead><tbody>' +
+				(rows || '<tr><td colspan="5">No disks</td></tr>') + '</tbody></table>' +
+				(nas ? '<h4>NAS mounts</h4><ul>' + nas + '</ul>' : '') +
 				'<p class="nc-tower-muted">Full SMART attrs: Webmin → SMART Health</p>');
 		} catch (e) {
 			setBody('smart', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
@@ -158,14 +209,13 @@
 			const d = await apiGet('/tower/fan');
 			if (d.unavailable) {
 				setBody('fan', '<p class="nc-tower-muted">Unavailable: ' + esc(d.reason || 'n/a') +
-					'. Chassis fans: Webmin Fan Control.</p>');
+					'. Chassis PWM writes: Webmin Fan Control.</p>');
 				return;
 			}
 			let html = '<pre class="nc-tower-preview">' + esc(JSON.stringify(d, null, 2).slice(0, 1500)) + '</pre>';
 			html += '<p><label>All fans % <input type="number" id="nc-tower-fan-speed" min="20" max="100" value="40" /></label> ';
 			html += '<button type="button" id="nc-tower-fan-set">Set all (≥20%)</button> ';
 			html += '<button type="button" id="nc-tower-fan-auto">Set auto</button></p>';
-			html += '<p class="nc-tower-muted">Off / 0% rejected. Chassis PWM via Webmin.</p>';
 			setBody('fan', html);
 			document.getElementById('nc-tower-fan-set')?.addEventListener('click', async () => {
 				const speed = parseInt(document.getElementById('nc-tower-fan-speed').value, 10);
@@ -188,23 +238,51 @@
 		}
 	}
 
+	async function loadChassisFan() {
+		try {
+			const d = await apiGet('/tower/chassis-fan');
+			if (d.unavailable) {
+				setBody('chassis-fan', '<p class="nc-tower-muted">' + esc(d.reason || 'unavailable') + '</p>');
+				return;
+			}
+			const fans = (d.fans || d.items || []).map((f) =>
+				'<tr><td>' + esc(f.name || f.label || '') + '</td><td>' + esc(f.rpm != null ? f.rpm : f.input) +
+				'</td><td>' + esc(f.pwm != null ? f.pwm : '—') + '</td><td>' + esc(f.chip || f.hwmon || '') + '</td></tr>').join('');
+			setBody('chassis-fan',
+				'<table class="nc-tower-table"><thead><tr><th>Fan</th><th>RPM</th><th>PWM</th><th>Chip</th></tr></thead><tbody>' +
+				(fans || '<tr><td colspan="4">No fans detected</td></tr>') + '</tbody></table>' +
+				'<p class="nc-tower-muted">PWM/profile writes stay in Webmin Fan Control.</p>');
+		} catch (e) {
+			setBody('chassis-fan', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
+		}
+	}
+
 	let containerCache = [];
 
 	function renderContainers(filter) {
 		const q = (filter || '').toLowerCase();
 		const list = containerCache.filter((c) => {
 			if (!q) return true;
-			return (c.name + ' ' + c.status + ' ' + (c.image || '')).toLowerCase().includes(q);
+			return (c.name + ' ' + c.status + ' ' + (c.image || '') + ' ' + (c.project || '')).toLowerCase().includes(q);
 		});
 		const rows = list.map((c) => {
-			const acts = c.mutable
-				? '<button type="button" data-act="restart" data-name="' + esc(c.name) + '">restart</button>' +
-					'<button type="button" data-act="stop" data-name="' + esc(c.name) + '">stop</button>' +
-					'<button type="button" data-act="start" data-name="' + esc(c.name) + '">start</button>' +
-					'<button type="button" data-act="logs" data-name="' + esc(c.name) + '">logs</button>'
-				: '<span class="nc-tower-muted">locked</span>';
-			return '<tr><td>' + esc(c.name) + '</td><td>' + esc(c.status) + '</td><td>' + esc(c.cpu) + '</td><td>' +
-				esc(c.mem) + '</td><td>' + esc((c.ports || []).slice(0, 3).join(', ')) + '</td><td>' + acts + '</td></tr>';
+			const acts = [];
+			if (c.mutable) {
+				acts.push('<button type="button" data-act="restart" data-name="' + esc(c.name) + '">restart</button>');
+				acts.push('<button type="button" data-act="stop" data-name="' + esc(c.name) + '">stop</button>');
+				acts.push('<button type="button" data-act="start" data-name="' + esc(c.name) + '">start</button>');
+				acts.push('<button type="button" data-act="kill" data-name="' + esc(c.name) + '">kill</button>');
+				acts.push('<button type="button" data-act="recreate" data-name="' + esc(c.name) + '">recreate</button>');
+				acts.push('<button type="button" data-act="exec" data-name="' + esc(c.name) + '">exec</button>');
+			}
+			if (c.loggable || c.mutable) {
+				acts.push('<button type="button" data-act="logs" data-name="' + esc(c.name) + '">logs</button>');
+				acts.push('<button type="button" data-act="inspect" data-name="' + esc(c.name) + '">inspect</button>');
+			}
+			if (!acts.length) acts.push('<span class="nc-tower-muted">locked</span>');
+			return '<tr><td>' + esc(c.name) + '</td><td>' + esc(c.project || '—') + '</td><td>' + esc(c.status) +
+				'</td><td>' + esc(c.cpu) + '</td><td>' + esc(c.mem) + '</td><td>' +
+				esc((c.ports || []).slice(0, 2).join(', ')) + '</td><td class="nc-tower-actions">' + acts.join(' ') + '</td></tr>';
 		}).join('');
 		const counts = window._ncTowerCounts || {};
 		const chips = '<div class="nc-tower-chips">' +
@@ -212,11 +290,34 @@
 			'<span class="nc-tower-chip">exited ' + esc(counts.exited) + '</span>' +
 			'<span class="nc-tower-chip">total ' + esc(counts.total) + '</span></div>';
 		setBody('containers', chips +
-			'<table class="nc-tower-table"><thead><tr><th>Name</th><th>Status</th><th>CPU</th><th>Mem</th><th>Ports</th><th>Actions</th></tr></thead><tbody>' +
-			(rows || '<tr><td colspan="6">No containers</td></tr>') + '</tbody></table>');
+			'<table class="nc-tower-table"><thead><tr><th>Name</th><th>Project</th><th>Status</th><th>CPU</th><th>Mem</th><th>Ports</th><th>Actions</th></tr></thead><tbody>' +
+			(rows || '<tr><td colspan="7">No containers</td></tr>') + '</tbody></table>');
 		document.querySelectorAll('[data-section="containers"] [data-act]').forEach((btn) => {
 			btn.addEventListener('click', onContainerAct);
 		});
+	}
+
+	function stopLogFollow() {
+		if (logFollowTimer) clearInterval(logFollowTimer);
+		logFollowTimer = null;
+		logFollowName = null;
+		const cb = document.getElementById('nc-tower-logs-follow');
+		if (cb) cb.checked = false;
+	}
+
+	async function fetchLogs(name, append) {
+		let path = '/tower/containers/' + encodeURIComponent(name) + '/logs?tail=200';
+		if (append && logSince) path += '&since=' + encodeURIComponent(logSince);
+		const d = await apiGet(path);
+		const body = document.getElementById('nc-tower-logs-body');
+		if (!body) return;
+		if (append && d.logs) {
+			body.textContent += d.logs;
+		} else {
+			body.textContent = d.logs || '(empty)';
+		}
+		logSince = String(Math.floor(Date.now() / 1000));
+		body.parentElement?.scrollTo?.(0, body.scrollHeight);
 	}
 
 	async function onContainerAct(ev) {
@@ -225,17 +326,69 @@
 		const act = btn.getAttribute('data-act');
 		if (act === 'logs') {
 			try {
-				const d = await apiGet('/tower/containers/' + encodeURIComponent(name) + '/logs?tail=100');
+				stopLogFollow();
+				logFollowName = name;
+				logSince = '';
+				await fetchLogs(name, false);
 				const dlg = document.getElementById('nc-tower-logs');
-				document.getElementById('nc-tower-logs-body').textContent = d.logs || '(empty)';
 				dlg.showModal();
+				document.getElementById('nc-tower-logs-follow').onchange = (e) => {
+					if (e.target.checked) {
+						logFollowTimer = setInterval(() => fetchLogs(name, true).catch(() => {}), 2000);
+					} else {
+						stopLogFollow();
+						logFollowName = name;
+					}
+				};
+				dlg.addEventListener('close', stopLogFollow, { once: true });
 			} catch (e) { toast(e.message); }
 			return;
 		}
-		if (!confirm(act.toUpperCase() + ' container ' + name + '?')) return;
+		if (act === 'inspect') {
+			try {
+				const d = await apiGet('/tower/containers/' + encodeURIComponent(name) + '/inspect');
+				document.getElementById('nc-tower-inspect-body').textContent =
+					JSON.stringify(d.inspect || d, null, 2).slice(0, 20000);
+				document.getElementById('nc-tower-inspect').showModal();
+			} catch (e) { toast(e.message); }
+			return;
+		}
+		if (act === 'exec') {
+			document.getElementById('nc-tower-exec-name').textContent = name;
+			document.getElementById('nc-tower-exec-out').textContent = '';
+			document.getElementById('nc-tower-exec').showModal();
+			document.getElementById('nc-tower-exec-form').onsubmit = async (ev2) => {
+				ev2.preventDefault();
+				let cmd;
+				try { cmd = JSON.parse(document.getElementById('nc-tower-exec-cmd').value); }
+				catch (e) { toast('cmd must be JSON array'); return; }
+				try {
+					const r = await apiPost('/tower/containers/' + encodeURIComponent(name) + '/exec', { cmd: cmd, timeout: 30 });
+					document.getElementById('nc-tower-exec-out').textContent =
+						(r.stdout || '') + (r.stderr || '') + (r.error ? '\nERR ' + r.error : '');
+				} catch (e) { toast(e.message); }
+			};
+			document.getElementById('nc-tower-exec-close').onclick = () => {
+				document.getElementById('nc-tower-exec').close();
+			};
+			return;
+		}
+		if (act === 'recreate') {
+			const typed = prompt('Type RECREATE to recreate container ' + name);
+			if (typed !== 'RECREATE') return;
+		} else if (act === 'kill') {
+			if (!confirm('KILL container ' + name + '?')) return;
+		} else if (!confirm(act.toUpperCase() + ' container ' + name + '?')) {
+			return;
+		}
 		btn.disabled = true;
 		try {
-			const r = await apiPost('/tower/containers/' + encodeURIComponent(name) + '/' + act, {});
+			let r;
+			if (act === 'recreate') {
+				r = await apiPost('/tower/containers/' + encodeURIComponent(name) + '/recreate', {});
+			} else {
+				r = await apiPost('/tower/containers/' + encodeURIComponent(name) + '/' + act, {});
+			}
 			toast(r.ok ? (name + ' → ' + (r.status || act)) : (r.error || 'failed'));
 			await loadContainers();
 		} catch (e) {
@@ -266,11 +419,15 @@
 						(s.exists ? 'no compose file' : 'missing dir') + '</td></tr>';
 				}
 				const risky = s.risky ? ' data-risky="1"' : '';
-				const btns = '<button type="button" data-stack="up" data-file="' + esc(s.file) + '"' + risky + '>up</button>' +
-					'<button type="button" data-stack="down" data-file="' + esc(s.file) + '"' + risky + '>down</button>';
+				const btns =
+					'<button type="button" data-stack="up" data-file="' + esc(s.file) + '"' + risky + '>up</button>' +
+					'<button type="button" data-stack="down" data-file="' + esc(s.file) + '"' + risky + '>down</button>' +
+					'<button type="button" data-stack="restart" data-file="' + esc(s.file) + '"' + risky + '>restart</button>' +
+					'<button type="button" data-stack="pull" data-file="' + esc(s.file) + '"' + risky + '>pull</button>' +
+					'<button type="button" data-stack="rebuild" data-file="' + esc(s.file) + '" data-risky="1">rebuild</button>';
 				return '<tr><td>' + esc(s.dir) + '</td><td><code>' + esc(s.file) + '</code><div class="nc-tower-preview">' +
 					esc(s.preview || '') + '</div></td><td>' + esc((s.services || []).join(', ')) +
-					'</td><td>' + (s.running_hint ? 'running?' : '—') + '</td><td>' + btns + '</td></tr>';
+					'</td><td>' + (s.running_hint ? 'running?' : '—') + '</td><td class="nc-tower-actions">' + btns + '</td></tr>';
 			}).join('');
 			setBody('stacks',
 				'<table class="nc-tower-table"><thead><tr><th>Dir</th><th>File / preview</th><th>Services</th><th>Hint</th><th></th></tr></thead><tbody>' +
@@ -279,11 +436,10 @@
 				btn.addEventListener('click', async () => {
 					const file = btn.getAttribute('data-file');
 					const action = btn.getAttribute('data-stack');
-					const risky = btn.getAttribute('data-risky') === '1';
+					const risky = btn.getAttribute('data-risky') === '1' || action === 'rebuild';
 					let msg = action.toUpperCase() + ' compose\n' + file + '?';
-					if (risky) msg = 'SIM/GAZEBO/SITL FILE\n' + msg + '\nType YES to confirm.';
 					if (risky) {
-						if (prompt(msg) !== 'YES') return;
+						if (prompt(msg + '\nType YES to confirm.') !== 'YES') return;
 					} else if (!confirm(msg)) return;
 					btn.disabled = true;
 					try {
@@ -300,6 +456,96 @@
 		}
 	}
 
+	async function loadImages() {
+		try {
+			const d = await apiGet('/tower/docker/images');
+			const imgs = d.images || d || [];
+			const list = Array.isArray(imgs) ? imgs : [];
+			const rows = list.slice(0, 80).map((img) => {
+				const repo = img.Repository || img.repository || img.RepoTags || img.ID || '';
+				const tag = img.Tag || img.tag || '';
+				const id = (img.ID || img.Id || '').toString().slice(0, 12);
+				const size = img.Size || img.size || '';
+				const ref = (typeof repo === 'string' ? repo : '') + (tag && tag !== '<none>' ? ':' + tag : '');
+				return '<tr><td>' + esc(ref || id) + '</td><td>' + esc(id) + '</td><td>' + esc(size) +
+					'</td><td><button type="button" data-pull="' + esc(ref) + '">pull</button></td></tr>';
+			}).join('');
+			setBody('images',
+				'<p><input type="text" id="nc-tower-image-pull" placeholder="image:tag" style="width:60%" /> ' +
+				'<button type="button" id="nc-tower-image-pull-btn">Pull</button></p>' +
+				'<table class="nc-tower-table"><thead><tr><th>Ref</th><th>ID</th><th>Size</th><th></th></tr></thead><tbody>' +
+				(rows || '<tr><td colspan="4">No images</td></tr>') + '</tbody></table>');
+			const doPull = async (image) => {
+				if (!image) return;
+				if (!confirm('Pull image ' + image + '?')) return;
+				try {
+					const r = await apiPost('/tower/docker/images/pull', { image });
+					toast(r.ok ? 'pull ok' : (r.error || 'failed'));
+					loadImages();
+				} catch (e) { toast(e.message); }
+			};
+			document.getElementById('nc-tower-image-pull-btn')?.addEventListener('click', () => {
+				doPull(document.getElementById('nc-tower-image-pull').value.trim());
+			});
+			document.querySelectorAll('[data-pull]').forEach((b) => {
+				b.addEventListener('click', () => doPull(b.getAttribute('data-pull')));
+			});
+		} catch (e) {
+			setBody('images', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
+		}
+	}
+
+	async function loadVolumes() {
+		try {
+			const d = await apiGet('/tower/docker/volumes');
+			const vols = d.volumes || d.Volumes || [];
+			const list = Array.isArray(vols) ? vols : [];
+			const rows = list.slice(0, 80).map((v) =>
+				'<tr><td>' + esc(v.Name || v.name) + '</td><td>' + esc(v.Driver || v.driver || '') +
+				'</td><td>' + esc(v.Mountpoint || v.mountpoint || '') + '</td></tr>').join('');
+			setBody('volumes',
+				'<table class="nc-tower-table"><thead><tr><th>Name</th><th>Driver</th><th>Mountpoint</th></tr></thead><tbody>' +
+				(rows || '<tr><td colspan="3">No volumes</td></tr>') + '</tbody></table>');
+		} catch (e) {
+			setBody('volumes', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
+		}
+	}
+
+	async function loadNetworks() {
+		try {
+			const d = await apiGet('/tower/docker/networks');
+			const nets = d.networks || d || [];
+			const list = Array.isArray(nets) ? nets : [];
+			const rows = list.map((n) =>
+				'<tr><td>' + esc(n.Name || n.name) + '</td><td>' + esc(n.Driver || n.driver || '') +
+				'</td><td>' + esc(n.Scope || n.scope || '') + '</td><td>' + esc((n.ID || n.Id || '').toString().slice(0, 12)) +
+				'</td></tr>').join('');
+			setBody('networks',
+				'<table class="nc-tower-table"><thead><tr><th>Name</th><th>Driver</th><th>Scope</th><th>ID</th></tr></thead><tbody>' +
+				(rows || '<tr><td colspan="4">No networks</td></tr>') + '</tbody></table>');
+		} catch (e) {
+			setBody('networks', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
+		}
+	}
+
+	async function loadEvents() {
+		try {
+			const d = await apiGet('/tower/docker/events?since=15m');
+			const ev = d.events || d.items || [];
+			const list = Array.isArray(ev) ? ev : [];
+			const rows = list.slice(-80).reverse().map((e) =>
+				'<tr><td>' + esc(e.time || e.Time || '') + '</td><td>' + esc(e.Type || e.type || '') +
+				'</td><td>' + esc(e.Action || e.action || '') + '</td><td>' +
+				esc(e.Actor?.Attributes?.name || e.name || JSON.stringify(e.Actor || {}).slice(0, 80)) +
+				'</td></tr>').join('');
+			setBody('events',
+				'<table class="nc-tower-table"><thead><tr><th>Time</th><th>Type</th><th>Action</th><th>Target</th></tr></thead><tbody>' +
+				(rows || '<tr><td colspan="4">No recent events</td></tr>') + '</tbody></table>');
+		} catch (e) {
+			setBody('events', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
+		}
+	}
+
 	async function loadOps() {
 		try {
 			const d = await apiGet('/tower/ops-inbox');
@@ -309,20 +555,142 @@
 				'<p class="' + cls + '"><strong>' + esc(b.status || '—') + '</strong> — ' + esc(b.summary || '') + '</p>' +
 				'<p class="nc-tower-muted">' + esc(b.name || 'no file') + ' · ' + esc(fmtTime(b.mtime)) +
 				(b.stale ? ' · stale' : '') + '</p>' +
-				(d.port_audit_latest
-					? '<p>Port audit: <code>' + esc(d.port_audit_latest.name) + '</code> · ' +
-						esc(fmtTime(d.port_audit_latest.mtime)) + '</p>'
-					: ''));
+				'<p><button type="button" id="nc-tower-backup-run">Run backup now</button> ' +
+				'<span class="nc-tower-muted">Delete backups stays in Webmin.</span></p>');
+			document.getElementById('nc-tower-backup-run')?.addEventListener('click', async () => {
+				if (!confirm('Run allowlisted backup script now? This may take several minutes.')) return;
+				try {
+					const r = await apiPost('/tower/backup/run', {});
+					toast(r.ok ? 'Backup started/finished ok' : (r.error || 'failed'));
+					loadOps();
+				} catch (e) { toast(e.message); }
+			});
+			const crit = (d.critical_recent || []).map((x) =>
+				'<tr class="nc-tower-error"><td>' + esc(x.name) + '</td><td>' + esc(x.monitor || '') +
+				'</td><td>' + esc(x.status || '') + '</td><td>' + esc(x.detail || '') +
+				'</td><td>' + esc(fmtTime(x.mtime)) + '</td></tr>').join('');
 			const rows = (d.inbox_recent || []).slice(0, 25).map((x) =>
 				'<tr><td>' + esc(x.name) + '</td><td>' + esc(x.monitor || '') + '</td><td>' +
 				esc(x.status || '') + '</td><td>' + esc(x.detail || '') + '</td><td>' +
 				esc(fmtTime(x.mtime)) + '</td></tr>').join('');
 			setBody('inbox',
+				(crit ? '<h4>CRITICAL</h4><table class="nc-tower-table"><thead><tr><th>File</th><th>Monitor</th><th>Status</th><th>Detail</th><th>When</th></tr></thead><tbody>' +
+					crit + '</tbody></table>' : '') +
 				'<table class="nc-tower-table"><thead><tr><th>File</th><th>Monitor</th><th>Status</th><th>Detail</th><th>When</th></tr></thead><tbody>' +
 				(rows || '<tr><td colspan="5">Empty</td></tr>') + '</tbody></table>');
 		} catch (e) {
 			setBody('backup', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
 			setBody('inbox', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
+		}
+	}
+
+	/* —— Host tab —— */
+	async function loadHostMounts() {
+		try {
+			const d = await apiGet('/tower/mounts');
+			const rows = (d.mounts || d.items || []).map((m) =>
+				'<tr><td>' + esc(m.target || m.mountpoint || m.path) + '</td><td>' + esc(m.source || m.device || '') +
+				'</td><td>' + esc(m.fstype || m.type || '') + '</td><td>' +
+				esc(m.used_pct != null ? m.used_pct + '%' : (m.usage || '—')) + '</td></tr>').join('');
+			setBody('host-mounts',
+				'<table class="nc-tower-table"><thead><tr><th>Mount</th><th>Source</th><th>FS</th><th>Used</th></tr></thead><tbody>' +
+				(rows || '<tr><td colspan="4">None</td></tr>') + '</tbody></table>');
+		} catch (e) {
+			setBody('host-mounts', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
+		}
+	}
+
+	async function loadHostPackages() {
+		try {
+			const d = await apiGet('/tower/packages');
+			if (d.unavailable) {
+				setBody('host-packages', '<p class="nc-tower-muted">' + esc(d.reason || 'unavailable') + '</p>');
+				return;
+			}
+			const pkgs = d.packages || d.upgradable || [];
+			const rows = pkgs.slice(0, 60).map((p) => {
+				if (typeof p === 'string') return '<tr><td colspan="2">' + esc(p) + '</td></tr>';
+				return '<tr><td>' + esc(p.name || p.package) + '</td><td>' + esc(p.version || p.candidate || '') + '</td></tr>';
+			}).join('');
+			setBody('host-packages',
+				'<p class="nc-tower-chip">' + esc(d.count != null ? d.count : pkgs.length) + ' upgradable</p>' +
+				'<table class="nc-tower-table"><thead><tr><th>Package</th><th>Version</th></tr></thead><tbody>' +
+				(rows || '<tr><td colspan="2">None</td></tr>') + '</tbody></table>');
+		} catch (e) {
+			setBody('host-packages', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
+		}
+	}
+
+	async function loadHostProc() {
+		try {
+			const d = await apiGet('/tower/proc');
+			const rows = (d.processes || d.items || []).map((p) =>
+				'<tr><td>' + esc(p.pid || '') + '</td><td>' + esc(p.user || p.USER || '') +
+				'</td><td>' + esc(p.cpu || p['%CPU'] || '') + '</td><td>' + esc(p.mem || p['%MEM'] || '') +
+				'</td><td>' + esc(p.command || p.CMD || p.cmd || '') + '</td></tr>').join('');
+			setBody('host-proc',
+				'<table class="nc-tower-table"><thead><tr><th>PID</th><th>User</th><th>CPU</th><th>Mem</th><th>Command</th></tr></thead><tbody>' +
+				(rows || '<tr><td colspan="5">None</td></tr>') + '</tbody></table>' +
+				'<p class="nc-tower-muted">Kill stays out of Tower.</p>');
+		} catch (e) {
+			setBody('host-proc', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
+		}
+	}
+
+	async function loadHostSystemd() {
+		try {
+			const d = await apiGet('/tower/systemd');
+			const rows = (d.units || d.items || []).map((u) =>
+				'<tr><td>' + esc(u.unit || u.name) + '</td><td>' + esc(u.active || u.state || '') +
+				'</td><td>' + esc(u.enabled || '') + '</td><td>' +
+				(u.restartable !== false
+					? '<button type="button" data-unit="' + esc(u.unit || u.name) + '">restart</button>'
+					: '') + '</td></tr>').join('');
+			setBody('host-systemd',
+				'<table class="nc-tower-table"><thead><tr><th>Unit</th><th>Active</th><th>Enabled</th><th></th></tr></thead><tbody>' +
+				(rows || '<tr><td colspan="4">None</td></tr>') + '</tbody></table>');
+			document.querySelectorAll('[data-section="host-systemd"] [data-unit]').forEach((btn) => {
+				btn.addEventListener('click', async () => {
+					const unit = btn.getAttribute('data-unit');
+					if (!confirm('Restart ' + unit + '?')) return;
+					try {
+						const r = await apiPost('/tower/systemd/restart', { unit });
+						toast(r.ok ? 'restarted ' + unit : (r.error || 'failed'));
+						loadHostSystemd();
+					} catch (e) { toast(e.message); }
+				});
+			});
+		} catch (e) {
+			setBody('host-systemd', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
+		}
+	}
+
+	async function loadHostCron() {
+		try {
+			const d = await apiGet('/tower/cron');
+			const lines = (d.root_crontab || d.crontab || []).map((l) => '<li><code>' + esc(l) + '</code></li>').join('');
+			const files = (d.cron_d_files || d.cron_d || d.files || []).map((f) => '<li>' + esc(f) + '</li>').join('');
+			setBody('host-cron',
+				'<h4>root crontab</h4><ul>' + (lines || '<li class="nc-tower-muted">empty</li>') + '</ul>' +
+				'<h4>/etc/cron.d</h4><ul>' + (files || '<li class="nc-tower-muted">none</li>') + '</ul>' +
+				'<p class="nc-tower-muted">Edits stay in Webmin.</p>');
+		} catch (e) {
+			setBody('host-cron', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
+		}
+	}
+
+	async function loadHostNet() {
+		try {
+			const d = await apiGet('/tower/net');
+			const rows = (d.ifaces || d.interfaces || []).map((i) =>
+				'<tr><td>' + esc(i.name || i.ifname) + '</td><td>' +
+				esc((i.addr || i.addrs || i.addresses || []).join?.(', ') || i.address || '') +
+				'</td><td>' + esc(i.state || i.operstate || '') + '</td></tr>').join('');
+			setBody('host-net',
+				'<table class="nc-tower-table"><thead><tr><th>Iface</th><th>Addrs</th><th>State</th></tr></thead><tbody>' +
+				(rows || '<tr><td colspan="3">None</td></tr>') + '</tbody></table>');
+		} catch (e) {
+			setBody('host-net', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
 		}
 	}
 
@@ -357,14 +725,27 @@
 		document.getElementById('nc-tower-container-filter')?.addEventListener('input', (e) => {
 			renderContainers(e.target.value);
 		});
-		Promise.all([
-			loadHost(), loadGpu(), loadSmart(), loadFan(),
-			loadContainers(), loadStacks(), loadOps(),
+		const loadAll = () => Promise.all([
+			loadHost(), loadDockerEngine(), loadGpu(), loadSmart(), loadFan(), loadChassisFan(),
+			loadContainers(), loadStacks(), loadImages(), loadVolumes(), loadNetworks(),
+			loadEvents(), loadOps(),
 		]);
+		loadAll();
+		setInterval(loadAll, REFRESH_MS);
+	}
+
+	function bootHost() {
+		const loadAll = () => Promise.all([
+			loadHostMounts(), loadHostPackages(), loadHostProc(),
+			loadHostSystemd(), loadHostCron(), loadHostNet(),
+		]);
+		loadAll();
+		setInterval(loadAll, REFRESH_MS);
 	}
 
 	document.addEventListener('DOMContentLoaded', () => {
 		if (document.getElementById('nc-tower-ops')) bootOps();
+		if (document.getElementById('nc-tower-host')) bootHost();
 		if (document.getElementById('nc-tower-tools')) loadTools();
 	});
 })();

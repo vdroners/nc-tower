@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Control Tower preflight gates (G00 layout, G01 version, G16 attribution, Ops 1.5)
+# Control Tower preflight gates
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -23,10 +23,14 @@ check G00 "main js" test -f js/nc_tower-main.js
 check G00 "ops js" test -f js/nc_tower-ops.js
 check G00 "ops css" test -f css/nc_tower-ops.css
 check G00 "ops template" test -f templates/ops.php
+check G00 "host template" test -f templates/host.php
 check G00 "tools template" test -f templates/tools.php
 check G00 "subnav partial" test -f templates/partials/subnav.php
 check G00 "TowerController" test -f lib/Controller/TowerController.php
-check G00 "ops plan" test -f docs/plans/control-tower-ops-ui.md
+check G00 "standalone plan" test -f docs/plans/control-tower-standalone.md
+check G00 "capability matrix" test -f docs/CAPABILITY_MATRIX.md
+check G00 "sidecar .env present" test -f sidecar/.env
+check G00 "sidecar .env gitignored" grep -q 'sidecar/.env' .gitignore
 
 ver=$(grep -oE '<version>[0-9]+\.[0-9]+\.[0-9]+</version>' appinfo/info.xml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
 check G01 "version readable" test -n "$ver"
@@ -53,15 +57,16 @@ else
   echo "PASS G14 PageController admin-gated"
 fi
 
-# Routes for Ops 1.5
 check G10 "ops page route" grep -q "page#ops" appinfo/routes.php
+check G10 "host page route" grep -q "page#host" appinfo/routes.php
 check G10 "tools page route" grep -q "page#tools" appinfo/routes.php
 check G10 "tower gpu route" grep -q "tower#hostGpu" appinfo/routes.php
 check G10 "tower fan POST" grep -q "tower#fanSet" appinfo/routes.php
-check G10 "tower stack up" grep -q "tower#stackUp" appinfo/routes.php
-check G10 "container action POST" grep -q "tower#containerAction" appinfo/routes.php
+check G10 "tower stack action" grep -q "tower#stackAction" appinfo/routes.php
+check G10 "container exec POST" grep -q "tower#containerExec" appinfo/routes.php
+check G10 "backup run POST" grep -q "tower#backupRun" appinfo/routes.php
+check G10 "docker df GET" grep -q "tower#dockerDf" appinfo/routes.php
 
-# Sidecar sock rw documented (compose file)
 if grep -q 'docker.sock:/var/run/docker.sock:ro' sidecar/docker-compose.yml; then
   echo "FAIL G15 sidecar sock still :ro (mutators need rw)"
   fail=1
@@ -69,9 +74,39 @@ else
   echo "PASS G15 sidecar sock not forced :ro"
 fi
 
-# Token warn (non-fatal)
-if grep -q 'changeme' sidecar/docker-compose.yml; then
-  echo "WARN G17 default sidecar token still changeme — set NC_TOWER_SIDECAR_TOKEN in prod"
+if grep -q "changeme" sidecar/docker-compose.yml; then
+  echo "FAIL G17 sidecar compose must not default token to changeme"
+  fail=1
+else
+  echo "PASS G17 no changeme default in compose"
+fi
+
+if grep -qE "getSystemValueString\(\s*'nc_tower_sidecar_token'\s*,\s*'changeme'" lib/Controller/TowerController.php; then
+  echo "FAIL G17 PHP must not default token to changeme"
+  fail=1
+else
+  echo "PASS G17 no changeme default in PHP"
+fi
+
+tok=$(grep -E '^NC_TOWER_SIDECAR_TOKEN=' sidecar/.env | cut -d= -f2- || true)
+if [[ -z "$tok" || "$tok" == "changeme" ]]; then
+  echo "FAIL G17 sidecar/.env token missing or changeme"
+  fail=1
+else
+  echo "PASS G17 sidecar/.env has non-changeme token"
+fi
+
+if grep -q prune appinfo/routes.php; then
+  echo "FAIL G18 system prune route present"
+  fail=1
+else
+  echo "PASS G18 no system prune in routes"
+fi
+if grep -qE 'host-shell|tower#shell' appinfo/routes.php; then
+  echo "FAIL G18 host-shell route present"
+  fail=1
+else
+  echo "PASS G18 no host-shell route"
 fi
 
 exit "$fail"

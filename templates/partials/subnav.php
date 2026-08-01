@@ -18,6 +18,7 @@ $items = [
 	['id' => 'system', 'label' => 'System', 'route' => 'system'],
 	['id' => 'user', 'label' => 'Users', 'route' => 'user'],
 	['id' => 'ops', 'label' => 'Ops', 'route' => 'ops'],
+	['id' => 'host', 'label' => 'Host', 'route' => 'host'],
 	['id' => 'tools', 'label' => 'Tools', 'route' => 'tools'],
 ];
 ?>
