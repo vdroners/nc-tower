@@ -54,7 +54,8 @@ services:
       - /dev:/dev
       - /sys:/sys:ro
       - /proc:/hostproc:ro
-      - /run:/hostrun:ro
+      # Host /run required for systemctl (dbus + systemd private socket) with pid: host
+      - /run:/run
       - /etc/os-release:/host/etc/os-release:ro
       - /var/spool/cron:/var/spool/cron:ro
       - /etc/crontab:/etc/crontab:ro
