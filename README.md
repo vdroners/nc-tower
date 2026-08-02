@@ -1,6 +1,6 @@
 # Control Tower
 
-**Version 1.8.0**
+**Version 1.8.1**
 
 Control Tower is the Nextcloud orchestrator for this GCS host — admin, stacks, host health, Docker day-ops, and ops inbox in one place.
 

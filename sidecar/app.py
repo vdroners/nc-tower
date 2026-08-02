@@ -79,7 +79,9 @@ DISK_PATHS = _csv_env(
     "NC_TOWER_DISK_PATHS",
 )
 CONTAINER_ALLOW = _csv_env(
-    "CONTAINER_ALLOW", "gcs_*,mavlink_gateway,nc_print_*", "NC_TOWER_CONTAINER_ALLOW"
+    "CONTAINER_ALLOW",
+    "gcs_*,mavlink_gateway,gcs_sitl,gcs_simcam,gcs_adsb*",
+    "NC_TOWER_CONTAINER_ALLOW",
 )
 CONTAINER_DENY = _csv_env(
     "CONTAINER_DENY",
@@ -105,8 +107,13 @@ SYSTEMD_USER_UNITS = set(
 SYSTEMD_USER = os.environ.get("SYSTEMD_USER") or os.environ.get("NC_TOWER_SYSTEMD_USER") or "vdroners"
 IMAGE_PULL_ALLOW = _csv_env(
     "IMAGE_PULL_ALLOW",
-    "ghcr.io/vdroners/*,docker.io/*,library/*,ollama/ollama:*",
+    "veterandroners/*,ghcr.io/vdroners/*",
     "NC_TOWER_IMAGE_PULL_ALLOW",
+)
+HOST_FAN_HELPER = _env(
+    "HOST_FAN_HELPER",
+    "/usr/share/webmin/fan-control/gpu-fan-helper.py",
+    "NC_TOWER_HOST_FAN_HELPER",
 )
 
 _AUDIT_LOCK = threading.Lock()
@@ -282,17 +289,36 @@ def _cpu_pct() -> float | None:
 
 
 def _package_temperature() -> float | None:
+    """Prefer x86_pkg_temp / Tctl; skip zero/nonsense readings."""
+    candidates: list[tuple[int, float]] = []
     for base in Path("/sys/class/hwmon").glob("hwmon*"):
         name = _read_text(base / "name").strip().lower()
         for source in sorted(base.glob("temp*_input")):
             label = _read_text(source.with_name(source.name.replace("_input", "_label"))).strip().lower()
-            if any(token in f"{name} {label}" for token in ("package", "tctl", "cpu", "coretemp", "k10temp")):
-                try:
-                    value = float(_read_text(source).strip())
-                    return round(value / 1000.0 if value > 500 else value, 1)
-                except ValueError:
-                    continue
-    return None
+            blob = f"{name} {label}"
+            try:
+                raw = float(_read_text(source).strip())
+            except ValueError:
+                continue
+            celsius = raw / 1000.0 if raw > 500 else raw
+            if celsius <= 0 or celsius > 125:
+                continue
+            priority = 99
+            if "x86_pkg_temp" in label or "package id" in label or label == "tctl":
+                priority = 0
+            elif "package" in blob or "tctl" in blob:
+                priority = 1
+            elif "coretemp" in name or "k10temp" in name:
+                priority = 2
+            elif "cpu" in blob:
+                priority = 3
+            else:
+                continue
+            candidates.append((priority, round(celsius, 1)))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item[0])
+    return candidates[0][1]
 
 
 def _interfaces() -> list[dict[str, Any]]:
@@ -519,9 +545,13 @@ def host_smart() -> dict[str, Any]:
 
         temp = match(
             [
+                # ATA attr rows: "... Always       -       39 (0 14 0 0 0)"
+                r"Temperature_Celsius\s+.*?-\s+(\d+)",
+                r"Airflow_Temperature_Cel\s+.*?-\s+(\d+)",
                 r"Temperature_Celsius\s+\S+(?:\s+\S+){7}\s+(\d+)",
                 r"Temperature:\s+(\d+)\s+Celsius",
                 r"Current Drive Temperature:\s+(\d+)",
+                r"Current Temperature:\s+(\d+)",
             ]
         )
         hours = match(
@@ -553,11 +583,29 @@ def _fan_helper() -> str | None:
     return _which(FAN_HELPER) or _which("gpu-fan-helper.py")
 
 
-def host_fan_get() -> dict[str, Any]:
+def _fan_cmd(*args: str) -> list[str] | None:
+    """Prefer host python+helper via nsenter (has pynvml); fall back to container python."""
+    nsenter = _nsenter_bin()
+    if nsenter and Path("/proc/1/ns/mnt").exists():
+        return [
+            nsenter,
+            "--mount=/proc/1/ns/mnt",
+            "--",
+            "/usr/bin/python3",
+            HOST_FAN_HELPER,
+            *args,
+        ]
     helper = _fan_helper()
     if not helper:
+        return None
+    return ["python3", helper, *args]
+
+
+def host_fan_get() -> dict[str, Any]:
+    cmd = _fan_cmd("status")
+    if not cmd:
         return {"unavailable": True, "reason": "fan_helper_missing"}
-    result = _run(["python3", helper, "status"], timeout=10)
+    result = _run(cmd, timeout=15)
     if result["exit"] != 0:
         return {"unavailable": True, "reason": result["stderr"] or result.get("error")}
     try:
@@ -568,12 +616,9 @@ def host_fan_get() -> dict[str, Any]:
 
 
 def host_fan_set(body: dict[str, Any]) -> dict[str, Any]:
-    helper = _fan_helper()
-    if not helper:
-        return {"ok": False, "error": "fan_helper_missing", "http": 503}
     op = str(body.get("op") or "")
     if op == "set-auto":
-        args = ["set-auto"]
+        args: list[str] = ["set-auto"]
     elif op in {"set-all-speeds", "set-speed"}:
         try:
             speed = int(body.get("speed"))
@@ -587,7 +632,10 @@ def host_fan_set(body: dict[str, Any]) -> dict[str, Any]:
             return {"ok": False, "error": "fan_index_required", "http": 400}
     else:
         return {"ok": False, "error": "invalid_op", "http": 400}
-    result = _run(["python3", helper, *args], timeout=20)
+    cmd = _fan_cmd(*args)
+    if not cmd:
+        return {"ok": False, "error": "fan_helper_missing", "http": 503}
+    result = _run(cmd, timeout=20)
     audit(f"fan op={op} exit={result['exit']}")
     return {"ok": result["exit"] == 0, "op": op, **result}
 

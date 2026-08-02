@@ -55,6 +55,16 @@ $sidecar = @file_get_contents("$remote/sidecar/app.py") ?: '';
 gate('G12', 'sidecar has /containers exec', str_contains($sidecar, '/exec'));
 gate('G12', 'sidecar has stacks rebuild', str_contains($sidecar, 'rebuild'));
 gate('G12', 'sidecar refuses empty token mutators', str_contains($sidecar, 'token_required') || str_contains($sidecar, '_post_authorized'));
+gate('G12', 'sidecar fan uses host python/nsenter', str_contains($sidecar, '_fan_cmd') && str_contains($sidecar, 'HOST_FAN_HELPER'));
+gate('G12', 'sidecar no system prune route', !str_contains($sidecar, 'system prune') && !str_contains($sidecar, 'volume prune'));
+gate('G12', 'sidecar no host-shell route', !str_contains($sidecar, '/host/shell') && !str_contains($sidecar, 'host-shell'));
+
+$opsJs = @file_get_contents("$remote/js/nc_tower-ops.js") ?: '';
+gate('G13', 'ops JS fmtPorts helper', str_contains($opsJs, 'function fmtPorts'));
+gate('G13', 'ops JS docker info unwrap', str_contains($opsJs, 'info.info') || str_contains($opsJs, 'const eng = info.info'));
+gate('G13', 'ops JS power_draw_w', str_contains($opsJs, 'power_draw_w'));
+gate('G13', 'ops JS soft fan refresh', str_contains($opsJs, 'loadFan({ soft'));
+gate('G13', 'ops JS no changeme', !str_contains($opsJs, 'changeme'));
 
 gate('G16', 'CREDITS deployed', is_file("$remote/CREDITS.md"));
 $credits = @file_get_contents("$remote/CREDITS.md") ?: '';

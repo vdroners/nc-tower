@@ -99,6 +99,49 @@
 		try { return new Date(ts * 1000).toLocaleString(); } catch (e) { return String(ts); }
 	}
 
+	/** Normalize docker ports field (API string or array) for table cells. */
+	function fmtPorts(ports) {
+		if (ports == null || ports === '') return '—';
+		if (typeof ports === 'string') {
+			const parts = ports.split(',').map((s) => s.trim()).filter(Boolean);
+			return parts.slice(0, 2).join(', ') + (parts.length > 2 ? '…' : '');
+		}
+		if (Array.isArray(ports)) {
+			return ports.slice(0, 2).map((p) => (typeof p === 'string' ? p : JSON.stringify(p))).join(', ');
+		}
+		return String(ports);
+	}
+
+	/** Format iface address list from {address} objects or strings. */
+	function fmtAddrs(iface) {
+		if (!iface) return '';
+		if (typeof iface === 'string') return iface;
+		const raw = iface.addresses || iface.addrs || iface.addr || [];
+		if (typeof raw === 'string') return raw;
+		if (!Array.isArray(raw)) return iface.address || '';
+		const addrs = raw.map((a) => {
+			if (typeof a === 'string') return a;
+			if (a && a.address) {
+				return a.prefixlen != null ? (a.address + '/' + a.prefixlen) : a.address;
+			}
+			return '';
+		}).filter(Boolean);
+		const v4 = addrs.filter((a) => a.includes('.') && !a.includes(':'));
+		const show = (v4.length ? v4 : addrs).slice(0, 4);
+		return show.join(', ');
+	}
+
+	function showInspect(payload) {
+		const body = document.getElementById('nc-tower-inspect-body');
+		const dlg = document.getElementById('nc-tower-inspect');
+		if (!body || !dlg) return;
+		body.textContent = JSON.stringify(payload, null, 2).slice(0, 20000);
+		dlg.showModal();
+	}
+
+	let fanWired = false;
+	let backupWired = false;
+
 	async function loadHost() {
 		try {
 			const d = await apiGet('/tower/host');
@@ -111,7 +154,7 @@
 			const unhealthy = (d.unhealthy_containers || []).map((n) => esc(n)).join(', ') || 'none';
 			const ifaces = (d.ifaces || []).slice(0, 8).map((i) => {
 				if (typeof i === 'string') return esc(i);
-				return esc(i.name || i.ifname || '') + ' ' + esc((i.addr || i.addrs || []).join?.(',') || i.address || '');
+				return esc(i.name || i.ifname || '') + ' ' + esc(fmtAddrs(i));
 			}).join('; ');
 			setBody('host',
 				'<div class="nc-tower-chips">' +
@@ -136,18 +179,14 @@
 				apiGet('/tower/docker/info'),
 				apiGet('/tower/docker/df'),
 			]);
+			const eng = info.info || info;
 			let html = '<div class="nc-tower-chips">';
-			html += '<span class="nc-tower-chip">server ' + esc(info.Name || info.name || info.ServerVersion || '—') + '</span>';
-			html += '<span class="nc-tower-chip">ver ' + esc(info.ServerVersion || info.server_version || '—') + '</span>';
-			html += '<span class="nc-tower-chip">containers ' + esc(info.Containers ?? info.containers ?? '—') + '</span>';
-			html += '<span class="nc-tower-chip">images ' + esc(info.Images ?? info.images ?? '—') + '</span>';
+			html += '<span class="nc-tower-chip">server ' + esc(eng.Name || eng.name || '—') + '</span>';
+			html += '<span class="nc-tower-chip">ver ' + esc(eng.ServerVersion || eng.server_version || '—') + '</span>';
+			html += '<span class="nc-tower-chip">containers ' + esc(eng.Containers ?? eng.containers ?? '—') + '</span>';
+			html += '<span class="nc-tower-chip">images ' + esc(eng.Images ?? eng.images ?? '—') + '</span>';
 			html += '</div>';
-			const rows = (df.Images || df.images || df.layers || df.items || []);
-			if (Array.isArray(df) || df.raw) {
-				html += '<pre class="nc-tower-preview">' + esc(JSON.stringify(df, null, 2).slice(0, 2500)) + '</pre>';
-			} else {
-				html += '<pre class="nc-tower-preview">' + esc(JSON.stringify(df, null, 2).slice(0, 2500)) + '</pre>';
-			}
+			html += '<pre class="nc-tower-preview">' + esc(JSON.stringify(df, null, 2).slice(0, 2500)) + '</pre>';
 			setBody('docker-engine', html);
 		} catch (e) {
 			setBody('docker-engine', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
@@ -165,7 +204,10 @@
 				'<tr><td>' + esc(g.name) + '</td><td>' + esc(g.util_pct) + '%</td><td>' +
 				esc(g.mem_used_mib) + ' / ' + esc(g.mem_total_mib) + ' MiB</td><td>' +
 				esc(g.temp_c) + '°C</td><td>' + esc(g.fan_pct) + '%</td><td>' +
-				esc(g.power_w != null ? g.power_w : (g.power_draw || '—')) + '</td></tr>').join('');
+				esc(g.power_draw_w != null ? g.power_draw_w
+					: (g.power_w != null ? g.power_w : (g.power_draw != null ? g.power_draw : '—'))) +
+				(g.power_limit_w != null ? ' / ' + esc(g.power_limit_w) : '') +
+				'</td></tr>').join('');
 			const procs = (d.processes || []).slice(0, 12).map((p) =>
 				'<li>' + esc(p.pid || '') + ' ' + esc(p.process_name || p.name || '') +
 				' ' + esc(p.used_memory || p.mem || '') + '</li>').join('');
@@ -204,36 +246,46 @@
 		}
 	}
 
-	async function loadFan() {
+	async function loadFan(opts) {
+		const soft = !!(opts && opts.soft);
 		try {
 			const d = await apiGet('/tower/fan');
 			if (d.unavailable) {
+				fanWired = false;
 				setBody('fan', '<p class="nc-tower-muted">Unavailable: ' + esc(d.reason || 'n/a') +
 					'. Chassis PWM writes: Webmin Fan Control.</p>');
 				return;
 			}
-			let html = '<pre class="nc-tower-preview">' + esc(JSON.stringify(d, null, 2).slice(0, 1500)) + '</pre>';
+			const preview = JSON.stringify(d.status != null ? d.status : d, null, 2).slice(0, 1500);
+			if (soft && fanWired) {
+				const pre = document.querySelector('[data-section="fan"] .nc-tower-preview');
+				if (pre) pre.textContent = preview;
+				return;
+			}
+			let html = '<pre class="nc-tower-preview">' + esc(preview) + '</pre>';
 			html += '<p><label>All fans % <input type="number" id="nc-tower-fan-speed" min="20" max="100" value="40" /></label> ';
 			html += '<button type="button" id="nc-tower-fan-set">Set all (≥20%)</button> ';
 			html += '<button type="button" id="nc-tower-fan-auto">Set auto</button></p>';
 			setBody('fan', html);
+			fanWired = true;
 			document.getElementById('nc-tower-fan-set')?.addEventListener('click', async () => {
 				const speed = parseInt(document.getElementById('nc-tower-fan-speed').value, 10);
 				if (!confirm('Set all GPU fans to ' + speed + '%?')) return;
 				try {
 					const r = await apiPost('/tower/fan', { op: 'set-all-speeds', speed });
 					toast(r.ok ? 'Fan speed set' : (r.error || 'failed'));
-					loadFan();
+					loadFan({ soft: false });
 				} catch (e) { toast(e.message); }
 			});
 			document.getElementById('nc-tower-fan-auto')?.addEventListener('click', async () => {
 				try {
 					const r = await apiPost('/tower/fan', { op: 'set-auto' });
 					toast(r.ok ? 'Fan auto' : (r.error || 'failed'));
-					loadFan();
+					loadFan({ soft: false });
 				} catch (e) { toast(e.message); }
 			});
 		} catch (e) {
+			fanWired = false;
 			setBody('fan', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
 		}
 	}
@@ -282,7 +334,7 @@
 			if (!acts.length) acts.push('<span class="nc-tower-muted">locked</span>');
 			return '<tr><td>' + esc(c.name) + '</td><td>' + esc(c.project || '—') + '</td><td>' + esc(c.status) +
 				'</td><td>' + esc(c.cpu) + '</td><td>' + esc(c.mem) + '</td><td>' +
-				esc((c.ports || []).slice(0, 2).join(', ')) + '</td><td class="nc-tower-actions">' + acts.join(' ') + '</td></tr>';
+				esc(fmtPorts(c.ports)) + '</td><td class="nc-tower-actions">' + acts.join(' ') + '</td></tr>';
 		}).join('');
 		const counts = window._ncTowerCounts || {};
 		const chips = '<div class="nc-tower-chips">' +
@@ -305,18 +357,13 @@
 		if (cb) cb.checked = false;
 	}
 
-	async function fetchLogs(name, append) {
-		let path = '/tower/containers/' + encodeURIComponent(name) + '/logs?tail=200';
-		if (append && logSince) path += '&since=' + encodeURIComponent(logSince);
+	async function fetchLogs(name) {
+		// Tail-only poll (no wall-clock since) — avoids duplicate append / overlap on follow.
+		const path = '/tower/containers/' + encodeURIComponent(name) + '/logs?tail=200';
 		const d = await apiGet(path);
 		const body = document.getElementById('nc-tower-logs-body');
 		if (!body) return;
-		if (append && d.logs) {
-			body.textContent += d.logs;
-		} else {
-			body.textContent = d.logs || '(empty)';
-		}
-		logSince = String(Math.floor(Date.now() / 1000));
+		body.textContent = d.logs || '(empty)';
 		body.parentElement?.scrollTo?.(0, body.scrollHeight);
 	}
 
@@ -329,12 +376,12 @@
 				stopLogFollow();
 				logFollowName = name;
 				logSince = '';
-				await fetchLogs(name, false);
+				await fetchLogs(name);
 				const dlg = document.getElementById('nc-tower-logs');
 				dlg.showModal();
 				document.getElementById('nc-tower-logs-follow').onchange = (e) => {
 					if (e.target.checked) {
-						logFollowTimer = setInterval(() => fetchLogs(name, true).catch(() => {}), 2000);
+						logFollowTimer = setInterval(() => fetchLogs(name).catch(() => {}), 2000);
 					} else {
 						stopLogFollow();
 						logFollowName = name;
@@ -347,9 +394,7 @@
 		if (act === 'inspect') {
 			try {
 				const d = await apiGet('/tower/containers/' + encodeURIComponent(name) + '/inspect');
-				document.getElementById('nc-tower-inspect-body').textContent =
-					JSON.stringify(d.inspect || d, null, 2).slice(0, 20000);
-				document.getElementById('nc-tower-inspect').showModal();
+				showInspect(d.inspect || d);
 			} catch (e) { toast(e.message); }
 			return;
 		}
@@ -458,6 +503,7 @@
 
 	async function loadImages() {
 		try {
+			const prevPull = document.getElementById('nc-tower-image-pull')?.value || '';
 			const d = await apiGet('/tower/docker/images');
 			const imgs = d.images || d || [];
 			const list = Array.isArray(imgs) ? imgs : [];
@@ -475,6 +521,8 @@
 				'<button type="button" id="nc-tower-image-pull-btn">Pull</button></p>' +
 				'<table class="nc-tower-table"><thead><tr><th>Ref</th><th>ID</th><th>Size</th><th></th></tr></thead><tbody>' +
 				(rows || '<tr><td colspan="4">No images</td></tr>') + '</tbody></table>');
+			const pullInput = document.getElementById('nc-tower-image-pull');
+			if (pullInput && prevPull) pullInput.value = prevPull;
 			const doPull = async (image) => {
 				if (!image) return;
 				if (!confirm('Pull image ' + image + '?')) return;
@@ -500,12 +548,24 @@
 			const d = await apiGet('/tower/docker/volumes');
 			const vols = d.volumes || d.Volumes || [];
 			const list = Array.isArray(vols) ? vols : [];
-			const rows = list.slice(0, 80).map((v) =>
-				'<tr><td>' + esc(v.Name || v.name) + '</td><td>' + esc(v.Driver || v.driver || '') +
-				'</td><td>' + esc(v.Mountpoint || v.mountpoint || '') + '</td></tr>').join('');
+			const rows = list.slice(0, 80).map((v) => {
+				const name = v.Name || v.name || '';
+				return '<tr><td>' + esc(name) + '</td><td>' + esc(v.Driver || v.driver || '') +
+					'</td><td>' + esc(v.Mountpoint || v.mountpoint || '') +
+					'</td><td><button type="button" data-vol-inspect="' + esc(name) + '">inspect</button></td></tr>';
+			}).join('');
 			setBody('volumes',
-				'<table class="nc-tower-table"><thead><tr><th>Name</th><th>Driver</th><th>Mountpoint</th></tr></thead><tbody>' +
-				(rows || '<tr><td colspan="3">No volumes</td></tr>') + '</tbody></table>');
+				'<table class="nc-tower-table"><thead><tr><th>Name</th><th>Driver</th><th>Mountpoint</th><th></th></tr></thead><tbody>' +
+				(rows || '<tr><td colspan="4">No volumes</td></tr>') + '</tbody></table>');
+			document.querySelectorAll('[data-vol-inspect]').forEach((btn) => {
+				btn.addEventListener('click', async () => {
+					const name = btn.getAttribute('data-vol-inspect');
+					try {
+						const r = await apiGet('/tower/docker/volumes?name=' + encodeURIComponent(name));
+						showInspect(r.volume || r.inspect || r);
+					} catch (e) { toast(e.message); }
+				});
+			});
 		} catch (e) {
 			setBody('volumes', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
 		}
@@ -516,13 +576,25 @@
 			const d = await apiGet('/tower/docker/networks');
 			const nets = d.networks || d || [];
 			const list = Array.isArray(nets) ? nets : [];
-			const rows = list.map((n) =>
-				'<tr><td>' + esc(n.Name || n.name) + '</td><td>' + esc(n.Driver || n.driver || '') +
-				'</td><td>' + esc(n.Scope || n.scope || '') + '</td><td>' + esc((n.ID || n.Id || '').toString().slice(0, 12)) +
-				'</td></tr>').join('');
+			const rows = list.map((n) => {
+				const name = n.Name || n.name || '';
+				return '<tr><td>' + esc(name) + '</td><td>' + esc(n.Driver || n.driver || '') +
+					'</td><td>' + esc(n.Scope || n.scope || '') + '</td><td>' +
+					esc((n.ID || n.Id || '').toString().slice(0, 12)) +
+					'</td><td><button type="button" data-net-inspect="' + esc(name) + '">inspect</button></td></tr>';
+			}).join('');
 			setBody('networks',
-				'<table class="nc-tower-table"><thead><tr><th>Name</th><th>Driver</th><th>Scope</th><th>ID</th></tr></thead><tbody>' +
-				(rows || '<tr><td colspan="4">No networks</td></tr>') + '</tbody></table>');
+				'<table class="nc-tower-table"><thead><tr><th>Name</th><th>Driver</th><th>Scope</th><th>ID</th><th></th></tr></thead><tbody>' +
+				(rows || '<tr><td colspan="5">No networks</td></tr>') + '</tbody></table>');
+			document.querySelectorAll('[data-net-inspect]').forEach((btn) => {
+				btn.addEventListener('click', async () => {
+					const name = btn.getAttribute('data-net-inspect');
+					try {
+						const r = await apiGet('/tower/docker/networks?name=' + encodeURIComponent(name));
+						showInspect(r.network || r.inspect || r);
+					} catch (e) { toast(e.message); }
+				});
+			});
 		} catch (e) {
 			setBody('networks', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
 		}
@@ -533,11 +605,17 @@
 			const d = await apiGet('/tower/docker/events?since=15m');
 			const ev = d.events || d.items || [];
 			const list = Array.isArray(ev) ? ev : [];
-			const rows = list.slice(-80).reverse().map((e) =>
-				'<tr><td>' + esc(e.time || e.Time || '') + '</td><td>' + esc(e.Type || e.type || '') +
-				'</td><td>' + esc(e.Action || e.action || '') + '</td><td>' +
-				esc(e.Actor?.Attributes?.name || e.name || JSON.stringify(e.Actor || {}).slice(0, 80)) +
-				'</td></tr>').join('');
+			const rows = list.slice(-80).reverse().map((e) => {
+				let t = e.time || e.Time;
+				if (t == null && e.timeNano) t = Math.floor(Number(e.timeNano) / 1e9);
+				const when = (typeof t === 'number' || (typeof t === 'string' && /^\d+$/.test(t)))
+					? fmtTime(Number(t))
+					: String(t || '—');
+				return '<tr><td>' + esc(when) + '</td><td>' + esc(e.Type || e.type || '') +
+					'</td><td>' + esc(e.Action || e.action || '') + '</td><td>' +
+					esc(e.Actor?.Attributes?.name || e.name || JSON.stringify(e.Actor || {}).slice(0, 80)) +
+					'</td></tr>';
+			}).join('');
 			setBody('events',
 				'<table class="nc-tower-table"><thead><tr><th>Time</th><th>Type</th><th>Action</th><th>Target</th></tr></thead><tbody>' +
 				(rows || '<tr><td colspan="4">No recent events</td></tr>') + '</tbody></table>');
@@ -546,25 +624,48 @@
 		}
 	}
 
-	async function loadOps() {
+	async function loadOps(opts) {
+		const soft = !!(opts && opts.soft);
 		try {
 			const d = await apiGet('/tower/ops-inbox');
 			const b = d.backup || {};
 			const cls = b.ok ? 'nc-tower-ok' : 'nc-tower-warn';
-			setBody('backup',
+			const statusHtml =
 				'<p class="' + cls + '"><strong>' + esc(b.status || '—') + '</strong> — ' + esc(b.summary || '') + '</p>' +
 				'<p class="nc-tower-muted">' + esc(b.name || 'no file') + ' · ' + esc(fmtTime(b.mtime)) +
-				(b.stale ? ' · stale' : '') + '</p>' +
-				'<p><button type="button" id="nc-tower-backup-run">Run backup now</button> ' +
-				'<span class="nc-tower-muted">Delete backups stays in Webmin.</span></p>');
-			document.getElementById('nc-tower-backup-run')?.addEventListener('click', async () => {
-				if (!confirm('Run allowlisted backup script now? This may take several minutes.')) return;
-				try {
-					const r = await apiPost('/tower/backup/run', {});
-					toast(r.ok ? 'Backup started/finished ok' : (r.error || 'failed'));
-					loadOps();
-				} catch (e) { toast(e.message); }
-			});
+				(b.stale ? ' · stale' : '') + '</p>';
+			if (soft && backupWired && document.getElementById('nc-tower-backup-run')) {
+				const root = document.querySelector('[data-section="backup"] .nc-tower-card__body');
+				if (root) {
+					const btnRow = root.querySelector('#nc-tower-backup-run')?.parentElement;
+					root.innerHTML = statusHtml +
+						'<p><button type="button" id="nc-tower-backup-run">Run backup now</button> ' +
+						'<span class="nc-tower-muted">Delete backups stays in Webmin.</span></p>';
+					document.getElementById('nc-tower-backup-run')?.addEventListener('click', async () => {
+						if (!confirm('Run allowlisted backup script now? This may take several minutes.')) return;
+						try {
+							const r = await apiPost('/tower/backup/run', {});
+							toast(r.ok ? 'Backup started/finished ok' : (r.error || 'failed'));
+							loadOps({ soft: false });
+						} catch (e) { toast(e.message); }
+					});
+					void btnRow;
+				}
+			} else {
+				setBody('backup',
+					statusHtml +
+					'<p><button type="button" id="nc-tower-backup-run">Run backup now</button> ' +
+					'<span class="nc-tower-muted">Delete backups stays in Webmin.</span></p>');
+				backupWired = true;
+				document.getElementById('nc-tower-backup-run')?.addEventListener('click', async () => {
+					if (!confirm('Run allowlisted backup script now? This may take several minutes.')) return;
+					try {
+						const r = await apiPost('/tower/backup/run', {});
+						toast(r.ok ? 'Backup started/finished ok' : (r.error || 'failed'));
+						loadOps({ soft: false });
+					} catch (e) { toast(e.message); }
+				});
+			}
 			const crit = (d.critical_recent || []).map((x) =>
 				'<tr class="nc-tower-error"><td>' + esc(x.name) + '</td><td>' + esc(x.monitor || '') +
 				'</td><td>' + esc(x.status || '') + '</td><td>' + esc(x.detail || '') +
@@ -579,6 +680,7 @@
 				'<table class="nc-tower-table"><thead><tr><th>File</th><th>Monitor</th><th>Status</th><th>Detail</th><th>When</th></tr></thead><tbody>' +
 				(rows || '<tr><td colspan="5">Empty</td></tr>') + '</tbody></table>');
 		} catch (e) {
+			backupWired = false;
 			setBody('backup', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
 			setBody('inbox', '<p class="nc-tower-error">' + esc(e.message) + '</p>');
 		}
@@ -684,7 +786,7 @@
 			const d = await apiGet('/tower/net');
 			const rows = (d.ifaces || d.interfaces || []).map((i) =>
 				'<tr><td>' + esc(i.name || i.ifname) + '</td><td>' +
-				esc((i.addr || i.addrs || i.addresses || []).join?.(', ') || i.address || '') +
+				esc(fmtAddrs(i)) +
 				'</td><td>' + esc(i.state || i.operstate || '') + '</td></tr>').join('');
 			setBody('host-net',
 				'<table class="nc-tower-table"><thead><tr><th>Iface</th><th>Addrs</th><th>State</th></tr></thead><tbody>' +
@@ -725,13 +827,19 @@
 		document.getElementById('nc-tower-container-filter')?.addEventListener('input', (e) => {
 			renderContainers(e.target.value);
 		});
-		const loadAll = () => Promise.all([
-			loadHost(), loadDockerEngine(), loadGpu(), loadSmart(), loadFan(), loadChassisFan(),
+		const loadOnce = () => Promise.all([
+			loadHost(), loadDockerEngine(), loadGpu(), loadSmart(), loadFan({ soft: false }), loadChassisFan(),
 			loadContainers(), loadStacks(), loadImages(), loadVolumes(), loadNetworks(),
-			loadEvents(), loadOps(),
+			loadEvents(), loadOps({ soft: false }),
 		]);
-		loadAll();
-		setInterval(loadAll, REFRESH_MS);
+		// Tick: refresh tables/chips; soft-update fan/backup so forms are not rebuilt every 12s.
+		const loadTick = () => Promise.all([
+			loadHost(), loadDockerEngine(), loadGpu(), loadSmart(), loadFan({ soft: true }), loadChassisFan(),
+			loadContainers(), loadStacks(), loadImages(), loadVolumes(), loadNetworks(),
+			loadEvents(), loadOps({ soft: true }),
+		]);
+		loadOnce();
+		setInterval(loadTick, REFRESH_MS);
 	}
 
 	function bootHost() {

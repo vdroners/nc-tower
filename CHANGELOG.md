@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.8.1] - 2026-08-01
+
+### Fixed
+- Ops Containers table crash when `ports` is a string (fmtPorts)
+- Docker engine chips empty — unwrap `{info:{…}}` payload
+- GPU power column uses `power_draw_w`; Host iface chips format address objects
+- GPU fan helper via host python3 + nsenter (pynvml on host)
+- ATA SMART temperature parse; package temp prefers x86_pkg_temp / skips 0°C noise
+- Log follow uses tail-only poll (no duplicate since-append)
+
+### Changed
+- Selective Ops refresh: fan form / backup button not fully rebuilt every 12s
+- Volume and network Inspect buttons; event times localized
+- Align sidecar default CONTAINER_ALLOW / IMAGE_PULL_ALLOW with compose
+
 ## [1.8.0] - 2026-08-01
 
 ### Added
