@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.8.2] - 2026-08-01
+
+### Fixed
+- SMART power-on-hours reported the next attribute row's ID instead of the raw value
+  (`\s` spanned newlines) — `/dev/sda` read as 10 h against a true 60404 h. ATA temp
+  and hours patterns are now line-anchored; added SCSI hours fallback
+- Host → Top processes returned nonsense keys: `ps aux` output (~110 KB / 792 procs)
+  exceeded the truncation cap and `_run` kept the tail, discarding the header row and
+  the highest-CPU entries. Fixed `-o` columns, `--no-headers`, and head-side truncation
+- SMART NAS mounts always rendered red "down" — rows carried no reachability flag;
+  sidecar now emits `ok` and a flat `fstype`
+- Host → Package updates showed a blank Version column (`new_version` vs `version`)
+- GPU process list showed no memory (`used_memory_mib` vs `used_memory`)
+
+### Changed
+- `_run` takes `keep="head"|"tail"` so listings sorted most-important-first survive truncation
+
 ## [1.8.1] - 2026-08-01
 
 ### Fixed

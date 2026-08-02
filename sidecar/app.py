@@ -178,7 +178,19 @@ def _run(
     check: bool = False,
     max_output: int = 200_000,
     env: dict[str, str] | None = None,
+    keep: str = "tail",
 ) -> dict[str, Any]:
+    """Run argv and capture output.
+
+    `keep` selects which end survives truncation. Logs want the tail; listings
+    that put the most important rows first (ps --sort) must keep the head, or
+    the header row and top entries are silently discarded.
+    """
+
+    def clip(text: str | None) -> str:
+        text = text or ""
+        return text[:max_output] if keep == "head" else text[-max_output:]
+
     try:
         proc = subprocess.run(
             argv,
@@ -191,8 +203,8 @@ def _run(
         )
         result = {
             "exit": proc.returncode,
-            "stdout": (proc.stdout or "")[-max_output:],
-            "stderr": (proc.stderr or "")[-max_output:],
+            "stdout": clip(proc.stdout),
+            "stderr": clip(proc.stderr),
         }
         if check and proc.returncode:
             result["error"] = "command_failed"
@@ -201,8 +213,8 @@ def _run(
         return {
             "exit": None,
             "error": "timeout",
-            "stdout": (exc.stdout or "")[-max_output:] if isinstance(exc.stdout, str) else "",
-            "stderr": (exc.stderr or "")[-max_output:] if isinstance(exc.stderr, str) else "",
+            "stdout": clip(exc.stdout) if isinstance(exc.stdout, str) else "",
+            "stderr": clip(exc.stderr) if isinstance(exc.stderr, str) else "",
         }
     except OSError as exc:
         return {"exit": None, "error": str(exc), "stdout": "", "stderr": ""}
@@ -510,7 +522,17 @@ def host_mounts() -> dict[str, Any]:
 def host_smart() -> dict[str, Any]:
     ctl = _which(SMARTCTL) or _which("smartctl")
     mounts = host_mounts()["interesting"]
-    nas_mounts = [row for row in mounts if row["path"].startswith(("/media/raid", "/mnt", "/nas"))]
+    # Carry an explicit reachability flag and a flat fstype — the UI shows these
+    # as OK/down and cannot infer either from a bare statvfs row.
+    nas_mounts = [
+        {
+            **row,
+            "ok": "error" not in row and row.get("mount") is not None,
+            "fstype": (row.get("mount") or {}).get("fstype"),
+        }
+        for row in mounts
+        if row["path"].startswith(("/media/raid", "/mnt", "/nas"))
+    ]
     if not ctl:
         return {
             "unavailable": True,
@@ -543,21 +565,24 @@ def host_smart() -> dict[str, Any]:
                     return found.group(1).strip()
             return None
 
+        # ATA attribute rows put the raw value last: "  9 Power_On_Hours … -   60404".
+        # Patterns stay anchored to a single line — `\s` spans newlines, so an
+        # unanchored trailing `(\d+)` picks up the *next* attribute's ID instead.
         temp = match(
             [
-                # ATA attr rows: "... Always       -       39 (0 14 0 0 0)"
-                r"Temperature_Celsius\s+.*?-\s+(\d+)",
-                r"Airflow_Temperature_Cel\s+.*?-\s+(\d+)",
-                r"Temperature_Celsius\s+\S+(?:\s+\S+){7}\s+(\d+)",
-                r"Temperature:\s+(\d+)\s+Celsius",
-                r"Current Drive Temperature:\s+(\d+)",
-                r"Current Temperature:\s+(\d+)",
+                r"^\s*\d+\s+Temperature_Celsius\b.*?-\s+(\d+)",
+                r"^\s*\d+\s+Airflow_Temperature_Cel\b.*?-\s+(\d+)",
+                r"^Temperature:\s+(\d+)\s+Celsius",
+                r"^Current Drive Temperature:\s+(\d+)",
+                r"^Current Temperature:\s+(\d+)",
             ]
         )
         hours = match(
             [
-                r"Power_On_Hours\s+\S+(?:\s+\S+){7}\s+(\d+)",
-                r"Power On Hours:\s+([\d,]+)",
+                # raw value is the last column; some drives write "9184h+00m+00.000s"
+                r"^\s*\d+\s+Power_On_Hours\b[^\n]*?[-\s](\d+)(?:h\+\S*)?\s*$",
+                r"^Power On Hours:\s+([\d,]+)",
+                r"^Accumulated power on time, hours:minutes\s+(\d+):",
             ]
         )
         disks.append(
@@ -726,25 +751,42 @@ def host_packages() -> dict[str, Any]:
 
 
 def host_processes() -> dict[str, Any]:
+    """Top processes by CPU.
+
+    Fixed `-o` columns instead of parsing the `ps aux` header: on a busy host
+    the output exceeds the truncation cap, and keeping the head is what makes
+    the highest-CPU rows (the point of this view) survive.
+    """
+    args = ["-eo", "pid,user:24,pcpu,pmem,rss,comm,args", "--sort=-pcpu", "--no-headers"]
     nsenter = _nsenter_bin()
     if nsenter:
         result = _run(
-            [nsenter, "--mount=/proc/1/ns/mnt", "--", "/bin/ps", "aux", "--sort=-%cpu"],
+            [nsenter, "--mount=/proc/1/ns/mnt", "--", "/bin/ps", *args],
             timeout=10,
             max_output=100_000,
+            keep="head",
         )
     else:
         ps = _which("ps")
         if not ps:
             return {"unavailable": True, "reason": "ps_missing", "processes": []}
-        result = _run([ps, "aux", "--sort=-%cpu"], timeout=10, max_output=100_000)
-    lines = result["stdout"].splitlines()
-    header = lines[0].split(None, 10) if lines else []
+        result = _run([ps, *args], timeout=10, max_output=100_000, keep="head")
     processes = []
-    for line in lines[1:26]:
-        values = line.split(None, 10)
-        if len(values) == 11:
-            processes.append(dict(zip(header, values)))
+    for line in result["stdout"].splitlines()[:25]:
+        values = line.split(None, 6)
+        if len(values) < 7:
+            continue
+        processes.append(
+            {
+                "pid": _number(values[0]),
+                "user": values[1],
+                "cpu": _number(values[2]),
+                "mem": _number(values[3]),
+                "rss_kb": _number(values[4]),
+                "name": values[5],
+                "command": values[6],
+            }
+        )
     return {"unavailable": result["exit"] != 0, "processes": processes, "ts": time.time()}
 
 

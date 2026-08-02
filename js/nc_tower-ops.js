@@ -210,7 +210,8 @@
 				'</td></tr>').join('');
 			const procs = (d.processes || []).slice(0, 12).map((p) =>
 				'<li>' + esc(p.pid || '') + ' ' + esc(p.process_name || p.name || '') +
-				' ' + esc(p.used_memory || p.mem || '') + '</li>').join('');
+				' ' + esc(p.used_memory_mib != null ? p.used_memory_mib + ' MiB'
+					: (p.used_memory || p.mem || '')) + '</li>').join('');
 			setBody('gpu', '<table class="nc-tower-table"><thead><tr><th>Name</th><th>Util</th><th>Mem</th><th>Temp</th><th>Fan</th><th>Power</th></tr></thead><tbody>' +
 				(rows || '<tr><td colspan="6">No GPUs</td></tr>') + '</tbody></table>' +
 				(procs ? '<ul>' + procs + '</ul>' : ''));
@@ -712,7 +713,8 @@
 			const pkgs = d.packages || d.upgradable || [];
 			const rows = pkgs.slice(0, 60).map((p) => {
 				if (typeof p === 'string') return '<tr><td colspan="2">' + esc(p) + '</td></tr>';
-				return '<tr><td>' + esc(p.name || p.package) + '</td><td>' + esc(p.version || p.candidate || '') + '</td></tr>';
+				return '<tr><td>' + esc(p.name || p.package) + '</td><td>' +
+					esc(p.new_version || p.version || p.candidate || '') + '</td></tr>';
 			}).join('');
 			setBody('host-packages',
 				'<p class="nc-tower-chip">' + esc(d.count != null ? d.count : pkgs.length) + ' upgradable</p>' +
