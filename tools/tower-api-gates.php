@@ -21,7 +21,8 @@ gate('G00', 'deployed routes.php', is_file("$remote/appinfo/routes.php"));
 gate('G00', 'deployed ops.php', is_file("$remote/templates/ops.php"));
 gate('G00', 'deployed host.php', is_file("$remote/templates/host.php"));
 gate('G00', 'deployed tools.php', is_file("$remote/templates/tools.php"));
-gate('G00', 'deployed nc_tower-ops.js', is_file("$remote/js/nc_tower-ops.js"));
+gate('G00', 'deployed app bundle', is_file("$remote/js/nc_tower-app.js"));
+gate('G00', 'deployed widget bundle', is_file("$remote/js/nc_tower-widget.js"));
 gate('G08', 'info.xml readable', is_readable("$remote/appinfo/info.xml"));
 
 $xml = @file_get_contents("$remote/appinfo/info.xml") ?: '';
@@ -31,19 +32,13 @@ gate('G09', 'version 1.8+', (bool) preg_match('/<version>1\.(8|[9]|[1-9]\d)\.\d+
 	|| (bool) preg_match('/<version>[2-9]\.\d+\.\d+<\/version>/', $xml));
 
 $routes = @file_get_contents("$remote/appinfo/routes.php") ?: '';
-gate('G10', 'tower#health route', str_contains($routes, 'tower#health'));
-gate('G10', 'tower#tools route', str_contains($routes, 'tower#tools'));
-gate('G10', 'tower#hostGpu route', str_contains($routes, 'tower#hostGpu'));
-gate('G10', 'tower#fanSet route', str_contains($routes, 'tower#fanSet'));
-gate('G10', 'tower#stackAction route', str_contains($routes, 'tower#stackAction'));
-gate('G10', 'tower#containerExec route', str_contains($routes, 'tower#containerExec'));
-gate('G10', 'tower#containerRecreate route', str_contains($routes, 'tower#containerRecreate'));
-gate('G10', 'tower#dockerDf route', str_contains($routes, 'tower#dockerDf'));
-gate('G10', 'tower#backupRun route', str_contains($routes, 'tower#backupRun'));
-gate('G10', 'tower#systemdRestart route', str_contains($routes, 'tower#systemdRestart'));
-gate('G10', 'page#ops route', str_contains($routes, 'page#ops'));
-gate('G10', 'page#host route', str_contains($routes, 'page#host'));
-gate('G10', 'enableapp still listed', str_contains($routes, 'enableapp'));
+foreach ([
+	'tower#health', 'tower#tools', 'tower#hostGpu', 'tower#fanSet', 'tower#stackAction',
+	'tower#containerExec', 'tower#containerRecreate', 'tower#dockerDf', 'tower#backupRun',
+	'tower#systemdRestart', 'page#ops', 'page#host', 'enableapp',
+] as $route) {
+	gate('G10', "route $route", str_contains($routes, $route));
+}
 
 $ctrl = @file_get_contents("$remote/lib/Controller/TowerController.php") ?: '';
 gate('G11', 'TowerController does not open docker.sock', !str_contains($ctrl, '/var/run/docker.sock') && !str_contains($ctrl, 'fopen('));
@@ -58,13 +53,48 @@ gate('G12', 'sidecar refuses empty token mutators', str_contains($sidecar, 'toke
 gate('G12', 'sidecar fan uses host python/nsenter', str_contains($sidecar, '_fan_cmd') && str_contains($sidecar, 'HOST_FAN_HELPER'));
 gate('G12', 'sidecar no system prune route', !str_contains($sidecar, 'system prune') && !str_contains($sidecar, 'volume prune'));
 gate('G12', 'sidecar no host-shell route', !str_contains($sidecar, '/host/shell') && !str_contains($sidecar, 'host-shell'));
+// 1.8.2: ps output exceeded the cap and _run kept the tail, discarding the
+// header and the top-CPU rows the view exists to show.
+gate('G12', 'sidecar ps keeps head on truncation', str_contains($sidecar, 'keep="head"'));
+gate('G12', 'sidecar smart hours anchored per line', str_contains($sidecar, 'Power_On_Hours\b[^\n]'));
 
-$opsJs = @file_get_contents("$remote/js/nc_tower-ops.js") ?: '';
-gate('G13', 'ops JS fmtPorts helper', str_contains($opsJs, 'function fmtPorts'));
-gate('G13', 'ops JS docker info unwrap', str_contains($opsJs, 'info.info') || str_contains($opsJs, 'const eng = info.info'));
-gate('G13', 'ops JS power_draw_w', str_contains($opsJs, 'power_draw_w'));
-gate('G13', 'ops JS soft fan refresh', str_contains($opsJs, 'loadFan({ soft'));
-gate('G13', 'ops JS no changeme', !str_contains($opsJs, 'changeme'));
+// --- G19 front end ----------------------------------------------------------
+$bundle = "$remote/js/nc_tower-app.js";
+gate('G19', 'app bundle is a real build', is_file($bundle) && filesize($bundle) > 200000);
+foreach (['index', 'ops', 'host', 'tools', 'apps', 'system', 'user'] as $tpl) {
+	$body = @file_get_contents("$remote/templates/$tpl.php") ?: '';
+	gate('G19', "template $tpl mounts the bundle",
+		str_contains($body, 'nc_tower-app') && str_contains($body, 'id="nc_tower"'));
+}
+$js = @file_get_contents($bundle) ?: '';
+gate('G19', 'bundle talks to tower routes', str_contains($js, '/tower/containers'));
+// The sidecar token is host-root equivalent. PHP holds it and proxies; it must
+// never be shipped to a browser. (A bare "changeme" substring check is useless
+// here — bundled i18n catalogues contain the French "changements".)
+gate('G19', 'bundle never sends the sidecar header', !str_contains($js, 'X-Ops-Token'));
+// The token file is host-root equivalent; PHP reads the token from config.php,
+// so nothing about it belongs in the deployed web-app tree.
+gate('G11', 'sidecar/.env not deployed into the web root', !is_file("$remote/sidecar/.env"));
+
+// --- G21 admin gating -------------------------------------------------------
+$stray = [];
+foreach (glob("$remote/lib/Controller/*.php") ?: [] as $file) {
+	foreach (file($file) ?: [] as $n => $line) {
+		if (preg_match('/^\s*#\[NoAdminRequired\]/', $line)) {
+			$stray[] = basename($file) . ':' . ($n + 1);
+		}
+	}
+}
+gate('G21', 'no active NoAdminRequired in any controller' . ($stray ? ' (' . implode(', ', $stray) . ')' : ''), $stray === []);
+
+// --- G22 dead weight --------------------------------------------------------
+$dead = [];
+foreach (['main', 'apps', 'system', 'user', 'ops'] as $old) {
+	if (is_file("$remote/js/nc_tower-$old.js")) {
+		$dead[] = "nc_tower-$old.js";
+	}
+}
+gate('G22', 'prebuilt bundles removed from deployed tree' . ($dead ? ' (' . implode(', ', $dead) . ')' : ''), $dead === []);
 
 gate('G16', 'CREDITS deployed', is_file("$remote/CREDITS.md"));
 $credits = @file_get_contents("$remote/CREDITS.md") ?: '';

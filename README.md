@@ -1,6 +1,6 @@
 # Control Tower
 
-**Version 1.8.2**
+**Version 1.9.0**
 
 Control Tower is the Nextcloud orchestrator for this GCS host — admin, stacks, host health, Docker day-ops, and ops inbox in one place.
 
@@ -24,6 +24,7 @@ Git remotes: `origin` → vdroners/nc-tower, `upstream` → zomtec2311/admincock
 - **Host tab** — mounts, package updates, top processes, systemd allowlisted restart, cron RO, network glance
 - **Tools tab** — deep links to Portainer, Webmin modules, Kuma, Caddy, Guac, WebODM, Orca, ADSB, MediaMTX, NC; WireGuard via **NC WireGuard app**
 - **Sidecar** — privileged host agent; deny-first container allowlist; no `docker.sock` in PHP
+- **Status-first Ops** — verdict banner and attention list over collapsed detail sections; per-section refresh intervals
 
 ## Security never-list
 
@@ -75,17 +76,22 @@ docker exec -u www-data cloud_app php occ app:enable nc_tower
 |------|------|
 | `appinfo/` | id, routes, version |
 | `lib/` | PHP controllers / services |
-| `js/nc_tower-ops.js` | Owned Ops/Tools UI |
-| `js/nc_tower-{main,apps,system,user}.js` | Prebuilt Admin Cockpit bundles |
+| `src/` | Vue 2.7 front end — `views/` (7 tabs + widget), `components/`, `services/` |
+| `js/` | Build output (`nc_tower-app.js`, `nc_tower-widget.js`) — generated, do not edit |
 | `sidecar/` | Host/Docker API |
 | `docs/plans/` | Phase plans |
 | `docs/CAPABILITY_MATRIX.md` | Port inventory |
 
 ```bash
+npm ci && npm run build   # or: make build
 make deploy
 make gate-preflight
 make bump-patch
 ```
+
+The front end is Vue 2.7 + `@nextcloud/vue` 8, matching nc_gcs. All seven PHP routes mount
+one bundle and pick their view from `data-page`, so deep links and hard refresh keep working
+without a router.
 
 ## License
 

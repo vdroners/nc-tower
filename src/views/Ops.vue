@@ -1,0 +1,919 @@
+<template>
+	<div class="tower-view">
+		<StatusBanner :level="verdict.level"
+			:count="verdict.items.length"
+			:facts="facts"
+			:updated="updatedAt"
+			:busy="refreshingAll"
+			@refresh="refreshAll" />
+
+		<AttentionList :items="verdict.items" />
+
+		<Section id="ops.containers"
+			title="Containers"
+			:summary="containerSummary"
+			:severity="sev.containers"
+			:loading="loading.containers"
+			:error="errors.containers"
+			default-open
+			@refresh="poller.refresh('containers')">
+			<div class="tower-toolbar">
+				<NcTextField :value.sync="containerFilter"
+					label="Filter containers"
+					placeholder="Filter name, project, image, status…"
+					trailing-button-icon="close"
+					:show-trailing-button="containerFilter !== ''"
+					@trailing-button-click="containerFilter = ''" />
+			</div>
+			<DataTable :columns="containerColumns"
+				:rows="filteredContainers"
+				row-key="name"
+				default-sort="name"
+				empty-text="No containers">
+				<template #cell-status="{ row }">
+					<span class="tower-state" :class="`tower-state--${row.status}`">{{ row.status }}</span>
+				</template>
+				<template #cell-ports="{ row }">{{ fmt.ports(row.ports) }}</template>
+				<template #cell-actions="{ row }">
+					<div class="tower-actions-cell">
+						<span v-if="!row.mutable && !row.loggable" class="tower-muted" :title="lockedHint">locked</span>
+						<NcActions v-else :aria-label="`Actions for ${row.name}`">
+							<NcActionButton v-if="row.loggable || row.mutable" @click="openLogs(row.name)">Logs</NcActionButton>
+							<NcActionButton v-if="row.loggable || row.mutable" @click="openInspect(row.name)">Inspect</NcActionButton>
+							<NcActionButton v-if="row.mutable" @click="ask('restart', row.name)">Restart</NcActionButton>
+							<NcActionButton v-if="row.mutable" @click="ask('stop', row.name)">Stop</NcActionButton>
+							<NcActionButton v-if="row.mutable" @click="ask('start', row.name)">Start</NcActionButton>
+							<NcActionButton v-if="row.mutable" @click="ask('kill', row.name)">Kill</NcActionButton>
+							<NcActionButton v-if="row.mutable" @click="ask('recreate', row.name)">Recreate</NcActionButton>
+							<NcActionButton v-if="row.mutable" @click="openExec(row.name)">Exec</NcActionButton>
+						</NcActions>
+					</div>
+				</template>
+			</DataTable>
+			<p class="tower-muted">{{ lockedCount }} container(s) outside the sidecar allowlist. {{ lockedHint }}</p>
+		</Section>
+
+		<Section id="ops.stacks"
+			title="Stacks"
+			:summary="`${stackRows.length} compose file(s) on pinned dirs`"
+			:loading="loading.stacks"
+			:error="errors.stacks"
+			@refresh="poller.refresh('stacks')">
+			<DataTable :columns="stackColumns" :rows="stackRows" row-key="file" empty-text="No compose files">
+				<template #cell-services="{ row }">{{ (row.services || []).join(', ') || '—' }}</template>
+				<template #cell-running_hint="{ row }">{{ row.running_hint ? 'running' : '—' }}</template>
+				<template #cell-actions="{ row }">
+					<div class="tower-actions-cell">
+						<NcButton v-if="row.preview" type="tertiary" @click="showPreview(row)">Preview</NcButton>
+						<NcActions v-if="row.file" :aria-label="`Actions for ${row.file}`">
+							<NcActionButton @click="askStack('up', row)">Up</NcActionButton>
+							<NcActionButton @click="askStack('restart', row)">Restart</NcActionButton>
+							<NcActionButton @click="askStack('pull', row)">Pull</NcActionButton>
+							<NcActionButton @click="askStack('rebuild', row)">Rebuild</NcActionButton>
+							<NcActionButton @click="askStack('down', row)">Down</NcActionButton>
+						</NcActions>
+					</div>
+				</template>
+			</DataTable>
+		</Section>
+
+		<Section id="ops.host"
+			title="Host and storage"
+			:summary="hostSummary"
+			:severity="sev.host"
+			:loading="loading.host"
+			:error="errors.host"
+			@refresh="poller.refresh('host')">
+			<div class="tower-chips">
+				<span class="tower-chip">CPU {{ host.cpu_pct != null ? `${host.cpu_pct}%` : '—' }}</span>
+				<span class="tower-chip">load {{ (host.loadavg || []).join(' / ') || '—' }}</span>
+				<span class="tower-chip">mem {{ fmt.meminfo(host.mem_available) }} free</span>
+				<span class="tower-chip">swap {{ fmt.meminfo(host.swap_free) }} free</span>
+				<span class="tower-chip">pkg {{ host.package_temp_c != null ? `${host.package_temp_c}°C` : '—' }}</span>
+				<span class="tower-chip">up {{ fmt.duration(host.uptime_s) }}</span>
+			</div>
+			<DataTable :columns="diskColumns" :rows="host.disks || []" row-key="path" empty-text="No disks">
+				<template #cell-used_pct="{ row }">
+					<UsageBar v-if="!row.error" :percent="row.used_pct" />
+					<span v-else class="tower-bad">{{ row.error }}</span>
+				</template>
+				<template #cell-used_b="{ row }">{{ fmt.bytes(row.used_b) }} / {{ fmt.bytes(row.total_b) }}</template>
+			</DataTable>
+			<p class="tower-muted">Interfaces: {{ ifaceLine || '—' }}</p>
+		</Section>
+
+		<Section id="ops.smart"
+			title="SMART and NAS"
+			:summary="smartSummary"
+			:severity="sev.smart"
+			:loading="loading.smart"
+			:error="errors.smart"
+			@refresh="poller.refresh('smart')">
+			<NcNoteCard v-if="smart.unavailable" type="warning">Unavailable: {{ smart.reason }}</NcNoteCard>
+			<template v-else>
+				<DataTable :columns="smartColumns" :rows="smart.disks || []" row-key="device" empty-text="No disks">
+					<template #cell-health="{ row }">
+						<span :class="row.health === 'PASS' ? 'tower-good' : 'tower-bad'">{{ row.health }}</span>
+					</template>
+					<template #cell-temp_c="{ row }">{{ row.temp_c != null ? `${row.temp_c}°C` : '—' }}</template>
+					<template #cell-power_on_hours="{ row }">
+						<span :class="{ 'tower-warn-text': row.power_on_hours > 43800 }">
+							{{ row.power_on_hours != null ? `${row.power_on_hours} h (${fmt.years(row.power_on_hours)})` : '—' }}
+						</span>
+					</template>
+				</DataTable>
+				<h4 class="tower-subhead">Network mounts</h4>
+				<DataTable :columns="nasColumns" :rows="smart.nas_mounts || []" row-key="path" empty-text="No network mounts">
+					<template #cell-ok="{ row }">
+						<span :class="row.ok ? 'tower-good' : 'tower-bad'">{{ row.ok ? 'OK' : 'down' }}</span>
+					</template>
+					<template #cell-used_pct="{ row }"><UsageBar :percent="row.used_pct" /></template>
+				</DataTable>
+				<p class="tower-muted">Full SMART attributes stay in Webmin → SMART Health.</p>
+			</template>
+		</Section>
+
+		<Section id="ops.gpu"
+			title="GPU"
+			:summary="gpuSummary"
+			:severity="sev.gpu"
+			:loading="loading.gpu"
+			:error="errors.gpu"
+			@refresh="poller.refresh('gpu')">
+			<NcNoteCard v-if="gpu.unavailable" type="warning">Unavailable: {{ gpu.reason }}</NcNoteCard>
+			<template v-else>
+				<DataTable :columns="gpuColumns" :rows="gpu.gpus || []" row-key="uuid" empty-text="No GPUs">
+					<template #cell-util_pct="{ row }"><UsageBar :percent="row.util_pct" :warn="90" :crit="99" /></template>
+					<template #cell-mem_used_mib="{ row }">{{ row.mem_used_mib }} / {{ row.mem_total_mib }} MiB</template>
+					<template #cell-temp_c="{ row }">{{ row.temp_c }}°C</template>
+					<template #cell-power_draw_w="{ row }">{{ row.power_draw_w }} / {{ row.power_limit_w }} W</template>
+				</DataTable>
+				<h4 v-if="(gpu.processes || []).length" class="tower-subhead">Compute processes</h4>
+				<DataTable v-if="(gpu.processes || []).length"
+					:columns="gpuProcColumns"
+					:rows="gpu.processes"
+					empty-text="None">
+					<template #cell-used_memory_mib="{ row }">{{ row.used_memory_mib != null ? `${row.used_memory_mib} MiB` : '—' }}</template>
+				</DataTable>
+			</template>
+		</Section>
+
+		<Section id="ops.fans"
+			title="Fans"
+			:summary="fanSummary"
+			:loading="loading.fan"
+			:error="errors.fan"
+			@refresh="poller.refresh('fan')">
+			<template v-if="!fan.unavailable">
+				<div class="tower-toolbar">
+					<NcTextField :value.sync="fanSpeed" type="number" label="All GPU fans %" :label-visible="true" />
+					<NcButton type="secondary" @click="askFan('set-all-speeds')">Set all</NcButton>
+					<NcButton type="tertiary" @click="askFan('set-auto')">Set auto</NcButton>
+				</div>
+				<pre class="tower-pre">{{ fanStatusText }}</pre>
+			</template>
+			<NcNoteCard v-else type="warning">GPU fan control unavailable: {{ fan.reason }}</NcNoteCard>
+			<h4 class="tower-subhead">Chassis fans (read only)</h4>
+			<DataTable :columns="chassisColumns" :rows="chassisFan.fans || []" empty-text="No fans detected" />
+			<p class="tower-muted">Chassis PWM writes stay in Webmin → Fan Control.</p>
+		</Section>
+
+		<Section id="ops.engine"
+			title="Docker engine"
+			:summary="engineSummary"
+			:loading="loading.engine"
+			:error="errors.engine"
+			@refresh="poller.refresh('engine')">
+			<div class="tower-chips">
+				<span class="tower-chip">{{ engine.Name || '—' }}</span>
+				<span class="tower-chip">v{{ engine.ServerVersion || '—' }}</span>
+				<span class="tower-chip">{{ engine.ContainersRunning ?? '—' }} running</span>
+				<span class="tower-chip">{{ engine.Images ?? '—' }} images</span>
+				<span class="tower-chip">{{ engine.OperatingSystem || '—' }}</span>
+			</div>
+			<DataTable :columns="dfColumns" :rows="dfRows" empty-text="No disk usage data" />
+		</Section>
+
+		<Section id="ops.images"
+			title="Images"
+			:summary="`${(images.images || []).length} image(s)`"
+			:loading="loading.images"
+			:error="errors.images"
+			@refresh="poller.refresh('images')">
+			<div class="tower-toolbar">
+				<NcTextField :value.sync="pullRef" label="Image reference" placeholder="repo/name:tag" />
+				<NcButton type="secondary" :disabled="!pullRef" @click="askPull(pullRef)">Pull</NcButton>
+			</div>
+			<DataTable :columns="imageColumns" :rows="imageRows" row-key="ref" default-sort="ref" empty-text="No images">
+				<template #cell-actions="{ row }">
+					<div class="tower-actions-cell">
+						<NcButton type="tertiary" :disabled="!row.ref" @click="askPull(row.ref)">Pull</NcButton>
+					</div>
+				</template>
+			</DataTable>
+			<p v-if="imageTruncated" class="tower-muted">Showing first 80 of {{ (images.images || []).length }}.</p>
+		</Section>
+
+		<Section id="ops.volumes"
+			title="Volumes"
+			:summary="`${(volumes.volumes || []).length} volume(s)`"
+			:loading="loading.volumes"
+			:error="errors.volumes"
+			@refresh="poller.refresh('volumes')">
+			<DataTable :columns="volumeColumns" :rows="volumeRows" row-key="name" default-sort="name" empty-text="No volumes">
+				<template #cell-actions="{ row }">
+					<div class="tower-actions-cell">
+						<NcButton type="tertiary" @click="inspectVolume(row.name)">Inspect</NcButton>
+					</div>
+				</template>
+			</DataTable>
+		</Section>
+
+		<Section id="ops.networks"
+			title="Networks"
+			:summary="`${(networks.networks || []).length} network(s)`"
+			:loading="loading.networks"
+			:error="errors.networks"
+			@refresh="poller.refresh('networks')">
+			<DataTable :columns="networkColumns" :rows="networkRows" row-key="name" default-sort="name" empty-text="No networks">
+				<template #cell-actions="{ row }">
+					<div class="tower-actions-cell">
+						<NcButton type="tertiary" @click="inspectNetwork(row.name)">Inspect</NcButton>
+					</div>
+				</template>
+			</DataTable>
+		</Section>
+
+		<Section id="ops.events"
+			title="Docker events"
+			:summary="`${(events.events || []).length} in last 15 min`"
+			:loading="loading.events"
+			:error="errors.events"
+			@refresh="poller.refresh('events')">
+			<DataTable :columns="eventColumns" :rows="eventRows" empty-text="No recent events" />
+		</Section>
+
+		<Section id="ops.backup"
+			title="Backup"
+			:summary="backupSummary"
+			:severity="sev.backup"
+			:loading="loading.inbox"
+			:error="errors.inbox"
+			@refresh="poller.refresh('inbox')">
+			<p :class="backup.ok ? 'tower-good' : 'tower-warn-text'">
+				<strong>{{ backup.status || '—' }}</strong> — {{ backup.summary || '' }}
+			</p>
+			<p class="tower-muted">{{ backup.name || 'no backup file' }} · {{ fmt.time(backup.mtime) }}{{ backup.stale ? ' · stale' : '' }}</p>
+			<NcButton type="secondary" @click="askBackup">Run backup now</NcButton>
+			<p class="tower-muted">Deleting backups stays in Webmin → Backup Mgr.</p>
+		</Section>
+
+		<Section id="ops.inbox"
+			title="Ops inbox"
+			:summary="inboxSummary"
+			:severity="sev.inbox"
+			:loading="loading.inbox"
+			:error="errors.inbox"
+			@refresh="poller.refresh('inbox')">
+			<template v-if="(inbox.critical_recent || []).length">
+				<h4 class="tower-subhead tower-bad">Critical</h4>
+				<DataTable :columns="inboxColumns" :rows="inbox.critical_recent" empty-text="None">
+					<template #cell-mtime="{ row }">{{ fmt.time(row.mtime) }}</template>
+				</DataTable>
+			</template>
+			<h4 class="tower-subhead">Recent</h4>
+			<DataTable :columns="inboxColumns" :rows="(inbox.inbox_recent || []).slice(0, 25)" empty-text="Empty">
+				<template #cell-mtime="{ row }">{{ fmt.time(row.mtime) }}</template>
+			</DataTable>
+		</Section>
+
+		<ConfirmDialog v-bind="confirm"
+			:open="confirm.open"
+			@cancel="confirm.open = false"
+			@confirm="runConfirmed" />
+
+		<OutputDialog :open="output.open"
+			:title="output.title"
+			:text="output.text"
+			:follow="output.follow"
+			@close="closeOutput">
+			<template #bar>
+				<NcCheckboxRadioSwitch v-if="output.kind === 'logs'"
+					:checked.sync="logFollow"
+					type="switch">
+					Follow (2 s)
+				</NcCheckboxRadioSwitch>
+			</template>
+		</OutputDialog>
+
+		<NcDialog :open="exec.open" name="Run command" size="normal" @update:open="exec.open = false">
+			<p>Exec in <strong>{{ exec.name }}</strong>. One-shot argv, no shell.</p>
+			<NcTextField :value.sync="exec.raw" label="argv JSON array" placeholder='["ls","-la"]' />
+			<NcNoteCard type="info">
+				Shells and destructive binaries are refused by the sidecar allowlist.
+			</NcNoteCard>
+			<pre v-if="exec.out" class="tower-pre">{{ exec.out }}</pre>
+			<template #actions>
+				<NcButton type="tertiary" @click="exec.open = false">Close</NcButton>
+				<NcButton type="primary" :disabled="exec.busy" @click="runExec">Run</NcButton>
+			</template>
+		</NcDialog>
+	</div>
+</template>
+
+<script>
+import { showError, showSuccess } from '@nextcloud/dialogs'
+import NcActionButton from '@nextcloud/vue/dist/Components/NcActionButton.js'
+import NcActions from '@nextcloud/vue/dist/Components/NcActions.js'
+import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/dist/Components/NcCheckboxRadioSwitch.js'
+import NcDialog from '@nextcloud/vue/dist/Components/NcDialog.js'
+import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
+import NcTextField from '@nextcloud/vue/dist/Components/NcTextField.js'
+
+import AttentionList from '../components/AttentionList.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import DataTable from '../components/DataTable.vue'
+import OutputDialog from '../components/OutputDialog.vue'
+import Section from '../components/Section.vue'
+import StatusBanner from '../components/StatusBanner.vue'
+import UsageBar from '../components/UsageBar.vue'
+
+import { get, post } from '../services/api.js'
+import fmt from '../services/format.js'
+import { assess, worst } from '../services/health.js'
+import Poller from '../services/poll.js'
+
+const LOCKED_HINT = 'Widen NC_TOWER_CONTAINER_LOG_ALLOW for read-only logs without granting mutate rights.'
+
+export default {
+	name: 'Ops',
+	components: {
+		AttentionList, ConfirmDialog, DataTable, OutputDialog, Section, StatusBanner, UsageBar,
+		NcActionButton, NcActions, NcButton, NcCheckboxRadioSwitch, NcDialog, NcNoteCard, NcTextField,
+	},
+	data() {
+		return {
+			fmt,
+			lockedHint: LOCKED_HINT,
+			poller: new Poller(),
+			host: {},
+			engineRaw: {},
+			df: {},
+			gpu: {},
+			smart: {},
+			fan: {},
+			chassisFan: {},
+			containers: {},
+			stacks: {},
+			images: {},
+			volumes: {},
+			networks: {},
+			events: {},
+			inbox: {},
+			packages: {},
+			loading: {},
+			errors: {},
+			containerFilter: '',
+			pullRef: '',
+			fanSpeed: '40',
+			refreshingAll: false,
+			updatedAt: '',
+			logFollow: false,
+			logTimer: null,
+			confirm: { open: false, title: '', message: '', confirmLabel: 'Confirm', phrase: '', danger: false, action: null },
+			output: { open: false, title: '', text: '', kind: '', follow: false, name: '' },
+			exec: { open: false, name: '', raw: '["ls","-la"]', out: '', busy: false },
+			containerColumns: [
+				{ key: 'name', label: 'Name' },
+				{ key: 'project', label: 'Project' },
+				{ key: 'status', label: 'Status' },
+				{ key: 'cpu', label: 'CPU', align: 'end' },
+				{ key: 'mem', label: 'Memory', align: 'end' },
+				{ key: 'ports', label: 'Ports' },
+				{ key: 'actions', label: '', align: 'end', sortable: false },
+			],
+			stackColumns: [
+				{ key: 'dir', label: 'Directory' },
+				{ key: 'file', label: 'Compose file', mono: true },
+				{ key: 'services', label: 'Services' },
+				{ key: 'running_hint', label: 'State' },
+				{ key: 'actions', label: '', align: 'end', sortable: false },
+			],
+			diskColumns: [
+				{ key: 'path', label: 'Path' },
+				{ key: 'used_b', label: 'Used' },
+				{ key: 'used_pct', label: 'Usage' },
+			],
+			smartColumns: [
+				{ key: 'device', label: 'Device' },
+				{ key: 'health', label: 'Health' },
+				{ key: 'model', label: 'Model' },
+				{ key: 'temp_c', label: 'Temp', align: 'end' },
+				{ key: 'power_on_hours', label: 'Powered on', align: 'end' },
+			],
+			nasColumns: [
+				{ key: 'path', label: 'Mount' },
+				{ key: 'ok', label: 'State' },
+				{ key: 'fstype', label: 'FS' },
+				{ key: 'used_pct', label: 'Usage' },
+			],
+			gpuColumns: [
+				{ key: 'name', label: 'GPU' },
+				{ key: 'util_pct', label: 'Utilisation' },
+				{ key: 'mem_used_mib', label: 'Memory', align: 'end' },
+				{ key: 'temp_c', label: 'Temp', align: 'end' },
+				{ key: 'fan_pct', label: 'Fan', align: 'end' },
+				{ key: 'power_draw_w', label: 'Power', align: 'end' },
+			],
+			gpuProcColumns: [
+				{ key: 'pid', label: 'PID' },
+				{ key: 'process_name', label: 'Process' },
+				{ key: 'used_memory_mib', label: 'Memory', align: 'end' },
+			],
+			chassisColumns: [
+				{ key: 'name', label: 'Fan' },
+				{ key: 'rpm', label: 'RPM', align: 'end' },
+				{ key: 'pwm', label: 'PWM', align: 'end' },
+				{ key: 'chip', label: 'Chip' },
+			],
+			dfColumns: [
+				{ key: 'Type', label: 'Type' },
+				{ key: 'TotalCount', label: 'Total', align: 'end' },
+				{ key: 'Active', label: 'Active', align: 'end' },
+				{ key: 'Size', label: 'Size', align: 'end' },
+				{ key: 'Reclaimable', label: 'Reclaimable', align: 'end' },
+			],
+			imageColumns: [
+				{ key: 'ref', label: 'Reference' },
+				{ key: 'id', label: 'ID', mono: true },
+				{ key: 'size', label: 'Size', align: 'end' },
+				{ key: 'actions', label: '', align: 'end', sortable: false },
+			],
+			volumeColumns: [
+				{ key: 'name', label: 'Name' },
+				{ key: 'driver', label: 'Driver' },
+				{ key: 'mountpoint', label: 'Mount point', mono: true },
+				{ key: 'actions', label: '', align: 'end', sortable: false },
+			],
+			networkColumns: [
+				{ key: 'name', label: 'Name' },
+				{ key: 'driver', label: 'Driver' },
+				{ key: 'scope', label: 'Scope' },
+				{ key: 'id', label: 'ID', mono: true },
+				{ key: 'actions', label: '', align: 'end', sortable: false },
+			],
+			eventColumns: [
+				{ key: 'when', label: 'When' },
+				{ key: 'type', label: 'Type' },
+				{ key: 'action', label: 'Action' },
+				{ key: 'target', label: 'Target' },
+			],
+			inboxColumns: [
+				{ key: 'name', label: 'File' },
+				{ key: 'monitor', label: 'Monitor' },
+				{ key: 'status', label: 'Status' },
+				{ key: 'detail', label: 'Detail' },
+				{ key: 'mtime', label: 'When' },
+			],
+		}
+	},
+	computed: {
+		verdict() {
+			return assess({
+				host: this.host,
+				containers: this.containers,
+				smart: this.smart,
+				gpu: this.gpu,
+				inbox: this.inbox,
+				packages: this.packages,
+			})
+		},
+		sev() {
+			const bySection = (name) => worst(...this.verdict.items
+				.filter((item) => item.section === name)
+				.map((item) => item.severity))
+			return {
+				containers: bySection('containers'),
+				host: bySection('host'),
+				smart: bySection('smart'),
+				gpu: bySection('gpu'),
+				inbox: bySection('inbox'),
+				backup: bySection('backup'),
+			}
+		},
+		facts() {
+			const counts = this.containers.counts || {}
+			const out = []
+			if (counts.total != null) {
+				out.push(`${counts.running || 0}/${counts.total} containers running`)
+			}
+			if (this.host.cpu_pct != null) {
+				out.push(`CPU ${this.host.cpu_pct}%`)
+			}
+			if (this.host.package_temp_c != null) {
+				out.push(`package ${this.host.package_temp_c}°C`)
+			}
+			const disks = (this.smart.disks || []).length
+			if (disks) {
+				out.push(`${(this.smart.disks || []).filter((d) => d.health === 'PASS').length}/${disks} SMART PASS`)
+			}
+			if (this.host.uptime_s) {
+				out.push(`up ${fmt.duration(this.host.uptime_s)}`)
+			}
+			return out
+		},
+		filteredContainers() {
+			const rows = this.containers.containers || []
+			const query = this.containerFilter.trim().toLowerCase()
+			if (!query) {
+				return rows
+			}
+			return rows.filter((row) => `${row.name} ${row.status} ${row.image || ''} ${row.project || ''}`
+				.toLowerCase().includes(query))
+		},
+		lockedCount() {
+			return (this.containers.containers || []).filter((row) => !row.mutable && !row.loggable).length
+		},
+		containerSummary() {
+			const counts = this.containers.counts || {}
+			return `${counts.running || 0} running · ${counts.exited || 0} exited · ${counts.total || 0} total`
+		},
+		hostSummary() {
+			const disks = this.host.disks || []
+			const worstDisk = disks.reduce((acc, d) => (Number(d.used_pct) > Number(acc?.used_pct || 0) ? d : acc), null)
+			return worstDisk ? `CPU ${this.host.cpu_pct ?? '—'}% · busiest disk ${worstDisk.path} ${worstDisk.used_pct}%` : ''
+		},
+		smartSummary() {
+			const disks = this.smart.disks || []
+			if (!disks.length) {
+				return this.smart.unavailable ? 'unavailable' : ''
+			}
+			return `${disks.filter((d) => d.health === 'PASS').length}/${disks.length} PASS`
+		},
+		gpuSummary() {
+			const gpus = this.gpu.gpus || []
+			return gpus.length ? gpus.map((g) => `${g.name} ${g.temp_c}°C`).join(', ') : ''
+		},
+		fanSummary() {
+			return this.fan.unavailable ? 'GPU fan control unavailable' : `${(this.chassisFan.fans || []).length} chassis fan(s)`
+		},
+		engine() {
+			return this.engineRaw.info || {}
+		},
+		engineSummary() {
+			return this.engine.ServerVersion ? `Docker ${this.engine.ServerVersion} · ${this.engine.Containers ?? '—'} containers` : ''
+		},
+		backup() {
+			return this.inbox.backup || {}
+		},
+		backupSummary() {
+			return this.backup.status ? `${this.backup.status}${this.backup.stale ? ' · stale' : ''}` : ''
+		},
+		inboxSummary() {
+			const crit = (this.inbox.critical_recent || []).length
+			return crit ? `${crit} critical` : `${(this.inbox.inbox_recent || []).length} recent`
+		},
+		ifaceLine() {
+			return (this.host.ifaces || []).slice(0, 6)
+				.map((iface) => `${iface.name || ''} ${fmt.addresses(iface)}`.trim())
+				.filter(Boolean).join(' · ')
+		},
+		fanStatusText() {
+			return JSON.stringify(this.fan.status ?? this.fan, null, 2).slice(0, 1500)
+		},
+		dfRows() {
+			return (this.df.rows || []).filter((row) => typeof row === 'object')
+		},
+		imageRows() {
+			const list = Array.isArray(this.images.images) ? this.images.images : []
+			return list.slice(0, 80).map((img) => {
+				const repo = img.Repository || img.repository || ''
+				const tag = img.Tag || img.tag || ''
+				return {
+					ref: repo ? `${repo}${tag && tag !== '<none>' ? `:${tag}` : ''}` : '',
+					id: String(img.ID || img.Id || '').slice(0, 12),
+					size: img.Size || img.size || '',
+				}
+			})
+		},
+		imageTruncated() {
+			return (this.images.images || []).length > 80
+		},
+		volumeRows() {
+			const list = Array.isArray(this.volumes.volumes) ? this.volumes.volumes : []
+			return list.map((vol) => ({
+				name: vol.Name || vol.name || '',
+				driver: vol.Driver || vol.driver || '',
+				mountpoint: vol.Mountpoint || vol.mountpoint || '',
+			}))
+		},
+		networkRows() {
+			const list = Array.isArray(this.networks.networks) ? this.networks.networks : []
+			return list.map((net) => ({
+				name: net.Name || net.name || '',
+				driver: net.Driver || net.driver || '',
+				scope: net.Scope || net.scope || '',
+				id: String(net.ID || net.Id || '').slice(0, 12),
+			}))
+		},
+		eventRows() {
+			const list = Array.isArray(this.events.events) ? this.events.events : []
+			return list.slice(-80).reverse().map((event) => {
+				let stamp = event.time || event.Time
+				if (stamp == null && event.timeNano) {
+					stamp = Math.floor(Number(event.timeNano) / 1e9)
+				}
+				return {
+					when: fmt.time(stamp),
+					type: event.Type || event.type || '',
+					action: event.Action || event.action || '',
+					target: event.Actor?.Attributes?.name || event.name || '',
+				}
+			})
+		},
+	},
+	watch: {
+		logFollow(on) {
+			this.stopLogFollow()
+			if (on && this.output.name) {
+				this.logTimer = setInterval(() => this.loadLogs(this.output.name), 2000)
+			}
+		},
+	},
+	created() {
+		const p = this.poller
+		p.add('containers', () => this.fetch('containers', '/tower/containers'), 10000)
+		p.add('host', () => this.fetch('host', '/tower/host'), 15000)
+		p.add('gpu', () => this.fetch('gpu', '/tower/gpu'), 30000)
+		p.add('events', () => this.fetch('events', '/tower/docker/events', { since: '15m' }), 30000)
+		p.add('engine', () => Promise.all([
+			this.fetch('engineRaw', '/tower/docker/info', null, 'engine'),
+			this.fetch('df', '/tower/docker/df', null, 'engine'),
+		]), 60000)
+		p.add('fan', () => Promise.all([
+			this.fetch('fan', '/tower/fan'),
+			this.fetch('chassisFan', '/tower/chassis-fan', null, 'fan'),
+		]), 60000)
+		p.add('inbox', () => this.fetch('inbox', '/tower/ops-inbox'), 60000)
+		p.add('stacks', () => this.fetch('stacks', '/tower/stacks'), 60000)
+		p.add('images', () => this.fetch('images', '/tower/docker/images'), 120000)
+		p.add('volumes', () => this.fetch('volumes', '/tower/docker/volumes'), 120000)
+		p.add('networks', () => this.fetch('networks', '/tower/docker/networks'), 120000)
+		// smartctl walks every physical disk; 1.8 ran this every 12 s.
+		p.add('smart', () => this.fetch('smart', '/tower/smart'), 300000)
+		p.add('packages', () => this.fetch('packages', '/tower/packages'), 300000)
+		p.start()
+	},
+	beforeDestroy() {
+		this.poller.stop()
+		this.stopLogFollow()
+	},
+	methods: {
+		async fetch(key, path, params, loadingKey) {
+			const slot = loadingKey || key
+			this.$set(this.loading, slot, true)
+			try {
+				this[key] = await get(path, params)
+				this.$set(this.errors, slot, '')
+				this.updatedAt = new Date().toLocaleTimeString()
+			} catch (error) {
+				this.$set(this.errors, slot, error.message)
+			} finally {
+				this.$set(this.loading, slot, false)
+			}
+		},
+		async refreshAll() {
+			this.refreshingAll = true
+			try {
+				await this.poller.refresh()
+			} finally {
+				this.refreshingAll = false
+			}
+		},
+
+		ask(action, name) {
+			const danger = ['kill', 'recreate', 'stop'].includes(action)
+			this.confirm = {
+				open: true,
+				title: `${action[0].toUpperCase()}${action.slice(1)} container`,
+				message: `${action} ${name}?`,
+				confirmLabel: action,
+				phrase: action === 'recreate' ? 'RECREATE' : '',
+				danger,
+				action: () => this.runContainer(action, name),
+			}
+		},
+		askStack(action, row) {
+			const risky = row.risky || ['down', 'rebuild'].includes(action)
+			this.confirm = {
+				open: true,
+				title: `Compose ${action}`,
+				message: `${action} ${row.file}?`,
+				confirmLabel: action,
+				phrase: risky ? 'YES' : '',
+				danger: risky,
+				action: () => this.runStack(action, row.file),
+			}
+		},
+		askPull(image) {
+			this.confirm = {
+				open: true,
+				title: 'Pull image',
+				message: `Pull ${image}?`,
+				confirmLabel: 'Pull',
+				phrase: '',
+				danger: false,
+				action: () => this.runPull(image),
+			}
+		},
+		askFan(op) {
+			this.confirm = {
+				open: true,
+				title: 'GPU fans',
+				message: op === 'set-auto' ? 'Hand GPU fans back to automatic control?' : `Set all GPU fans to ${this.fanSpeed}%?`,
+				confirmLabel: 'Apply',
+				phrase: '',
+				danger: false,
+				action: () => this.runFan(op),
+			}
+		},
+		askBackup() {
+			this.confirm = {
+				open: true,
+				title: 'Run backup',
+				message: 'Run the allowlisted backup script now? This can take several minutes.',
+				confirmLabel: 'Run backup',
+				phrase: '',
+				danger: false,
+				action: () => this.runBackup(),
+			}
+		},
+		async runConfirmed() {
+			const action = this.confirm.action
+			this.confirm.open = false
+			if (action) {
+				await action()
+			}
+		},
+
+		async mutate(promise, okMessage, after) {
+			try {
+				const result = await promise
+				if (result.ok === false) {
+					showError(result.error || result.stderr || 'Action failed')
+				} else {
+					showSuccess(okMessage)
+				}
+			} catch (error) {
+				showError(error.message)
+			} finally {
+				if (after) {
+					await after()
+				}
+			}
+		},
+		runContainer(action, name) {
+			const path = `/tower/containers/${encodeURIComponent(name)}/${action}`
+			return this.mutate(post(path, {}), `${name}: ${action} done`, () => this.poller.refresh('containers'))
+		},
+		runStack(action, file) {
+			return this.mutate(post(`/tower/stacks/${action}`, { file }), `Stack ${action} done`, async () => {
+				await this.poller.refresh('stacks')
+				await this.poller.refresh('containers')
+			})
+		},
+		runPull(image) {
+			return this.mutate(post('/tower/docker/images/pull', { image }), `Pulled ${image}`, () => this.poller.refresh('images'))
+		},
+		runFan(op) {
+			const body = op === 'set-auto' ? { op } : { op, speed: Number(this.fanSpeed) }
+			return this.mutate(post('/tower/fan', body), 'Fan setting applied', () => this.poller.refresh('fan'))
+		},
+		runBackup() {
+			return this.mutate(post('/tower/backup/run', {}), 'Backup finished', () => this.poller.refresh('inbox'))
+		},
+
+		async openLogs(name) {
+			this.output = { open: true, title: `Logs — ${name}`, text: 'Loading…', kind: 'logs', follow: true, name }
+			await this.loadLogs(name)
+		},
+		async loadLogs(name) {
+			try {
+				const data = await get(`/tower/containers/${encodeURIComponent(name)}/logs`, { tail: 200 })
+				this.output.text = data.logs || '(empty)'
+			} catch (error) {
+				this.output.text = error.message
+			}
+		},
+		stopLogFollow() {
+			if (this.logTimer) {
+				clearInterval(this.logTimer)
+				this.logTimer = null
+			}
+		},
+		closeOutput() {
+			this.output.open = false
+			this.logFollow = false
+			this.stopLogFollow()
+		},
+		async openInspect(name) {
+			this.output = { open: true, title: `Inspect — ${name}`, text: 'Loading…', kind: 'inspect', follow: false, name }
+			try {
+				const data = await get(`/tower/containers/${encodeURIComponent(name)}/inspect`)
+				this.output.text = JSON.stringify(data.inspect || data, null, 2)
+			} catch (error) {
+				this.output.text = error.message
+			}
+		},
+		showPreview(row) {
+			this.output = { open: true, title: row.file, text: row.preview || '', kind: 'preview', follow: false, name: '' }
+		},
+		async inspectVolume(name) {
+			this.output = { open: true, title: `Volume — ${name}`, text: 'Loading…', kind: 'inspect', follow: false, name }
+			try {
+				const data = await get('/tower/docker/volumes', { name })
+				this.output.text = JSON.stringify(data.inspect || data, null, 2)
+			} catch (error) {
+				this.output.text = error.message
+			}
+		},
+		async inspectNetwork(name) {
+			this.output = { open: true, title: `Network — ${name}`, text: 'Loading…', kind: 'inspect', follow: false, name }
+			try {
+				const data = await get('/tower/docker/networks', { name })
+				this.output.text = JSON.stringify(data.inspect || data, null, 2)
+			} catch (error) {
+				this.output.text = error.message
+			}
+		},
+
+		openExec(name) {
+			this.exec = { open: true, name, raw: '["ls","-la"]', out: '', busy: false }
+		},
+		async runExec() {
+			let cmd
+			try {
+				cmd = JSON.parse(this.exec.raw)
+			} catch (error) {
+				showError('Command must be a JSON array, e.g. ["ls","-la"]')
+				return
+			}
+			if (!Array.isArray(cmd) || !cmd.length) {
+				showError('Command must be a non-empty JSON array')
+				return
+			}
+			this.exec.busy = true
+			try {
+				const result = await post(`/tower/containers/${encodeURIComponent(this.exec.name)}/exec`, { cmd, timeout: 30 })
+				this.exec.out = `${result.stdout || ''}${result.stderr || ''}${result.error ? `\nERR ${result.error}` : ''}`
+			} catch (error) {
+				this.exec.out = error.message
+			} finally {
+				this.exec.busy = false
+			}
+		},
+	},
+}
+</script>
+
+<style lang="scss" scoped>
+.tower-toolbar {
+	display: flex;
+	align-items: flex-end;
+	gap: 8px;
+	flex-wrap: wrap;
+	margin-bottom: 10px;
+	max-width: 640px;
+}
+
+.tower-subhead {
+	margin: 16px 0 6px;
+	font-size: 0.95em;
+	color: var(--color-text-maxcontrast);
+}
+
+.tower-pre {
+	margin: 8px 0 0;
+	max-height: 220px;
+	overflow: auto;
+	font-family: var(--font-face-monospace, monospace);
+	font-size: 0.78em;
+	background: var(--color-background-dark);
+	border-radius: var(--border-radius, 4px);
+	padding: 8px;
+	white-space: pre-wrap;
+}
+
+.tower-state {
+	text-transform: capitalize;
+
+	&--running { color: var(--color-success); }
+	&--exited { color: var(--color-error); }
+	&--paused { color: var(--color-warning); }
+}
+
+.tower-good { color: var(--color-success); }
+.tower-bad { color: var(--color-error); }
+.tower-warn-text { color: var(--color-warning); }
+</style>

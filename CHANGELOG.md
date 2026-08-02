@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.9.0] - 2026-08-01
+
+Full Vue rebuild of all seven tabs. Plan: `docs/plans/control-tower-vue-rebuild.md`.
+
+### Added
+- Vue 2.7 + `@nextcloud/vue` front end for Home, Ops, Host, Apps, System, Users, Tools
+  and the dashboard widget, built with the same toolchain as nc_gcs
+- **Status-first Ops**: verdict banner (all clear / needs attention / critical) over an
+  attention list, with every detail section collapsed behind it. Triage rules live in
+  `src/services/health.js` — unhealthy/exited containers, disk pressure, SMART health,
+  drive age, temperatures, critical ops alerts, stale backups, pending updates
+- Home is now an overview: the same verdict plus one tile per area
+- Sortable tables that reflow into stacked cards below 720 px; row actions collapse into
+  an overflow menu instead of six inline buttons
+- Gate G19 (build + every template mounts the bundle), G20 (payload shape asserted
+  against the live sidecar), G21 (no `#[NoAdminRequired]` in any controller),
+  G22 (prebuilt bundles gone)
+- `scripts/fix-vue-demi.mjs`, run from `prebuild`, so the build is reproducible where
+  npm blocks dependency install scripts
+
+### Changed
+- Per-section refresh intervals replace the 12 s blanket tick: containers 10 s, host 15 s,
+  GPU/events 30 s, engine/fans/inbox/stacks 60 s, images/volumes/networks 120 s,
+  **SMART and packages 300 s**. Polling pauses while the tab is hidden and catches up on
+  return. 1.8 re-ran a five-disk `smartctl` sweep every twelve seconds
+- `confirm()` / `prompt('Type RECREATE')` replaced by a themed dialog that keeps the
+  typed-confirmation gate but works with a keyboard and on a phone
+- Compose previews moved out of table cells into a dialog
+- `make build` now compiles from `src/`; the "prebuilt assets" shortcut is gone
+
+### Removed
+- The four prebuilt Admin Cockpit bundles (~14 MB of minified JS with no source in this
+  repo) plus the hand-rolled Ops UI, subnav partial and legacy stylesheets. The app now
+  ships a 1.16 MB bundle with lazily loaded dialog chunks
+- Hardcoded light-mode colours (`#fff3cd`, `#222`, `#b00020`); everything uses Nextcloud
+  theme variables, so dark mode is correct
+
+### Notes
+- New UI strings are English only; the upstream `l10n/` catalogues are retained but no
+  longer cover the rebuilt views
+
 ## [1.8.2] - 2026-08-01
 
 ### Fixed

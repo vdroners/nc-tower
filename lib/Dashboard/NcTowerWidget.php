@@ -93,6 +93,5 @@ public function getUrl(): ?string {
     public function load(): void
     {
         Util::addScript('nc_tower', 'nc_tower-widget');
-        Util::addStyle('nc_tower', 'nc_tower-widget');
     }
 }

@@ -1,0 +1,108 @@
+<template>
+	<div class="tower-widget">
+		<NcLoadingIcon v-if="loading" :size="24" />
+		<template v-else>
+			<div class="tower-widget__verdict" :class="`tower-widget__verdict--${verdict.level}`">
+				<SeverityDot :level="verdict.level" />
+				<strong>{{ headline }}</strong>
+			</div>
+			<ul v-if="verdict.items.length" class="tower-widget__items">
+				<li v-for="(item, index) in verdict.items.slice(0, 4)" :key="index">
+					<SeverityDot :level="item.severity" />
+					<span>{{ item.title }}</span>
+				</li>
+			</ul>
+			<p v-else class="tower-widget__facts">{{ facts }}</p>
+			<a class="tower-widget__link" :href="opsUrl">Open Control Tower →</a>
+		</template>
+	</div>
+</template>
+
+<script>
+import { generateUrl } from '@nextcloud/router'
+import NcLoadingIcon from '@nextcloud/vue/dist/Components/NcLoadingIcon.js'
+import SeverityDot from '../components/SeverityDot.vue'
+import { get } from '../services/api.js'
+import { assess } from '../services/health.js'
+
+export default {
+	name: 'Widget',
+	components: { NcLoadingIcon, SeverityDot },
+	data() {
+		return { loading: true, host: {}, containers: {}, smart: {}, inbox: {} }
+	},
+	computed: {
+		verdict() {
+			return assess({ host: this.host, containers: this.containers, smart: this.smart, inbox: this.inbox })
+		},
+		headline() {
+			return { ok: 'All clear', warn: 'Needs attention', crit: 'Critical' }[this.verdict.level]
+		},
+		facts() {
+			const counts = this.containers.counts || {}
+			return `${counts.running || 0}/${counts.total || 0} containers running`
+		},
+		opsUrl() {
+			return generateUrl('/apps/nc_tower/ops')
+		},
+	},
+	async created() {
+		const load = async (key, path) => {
+			try {
+				this[key] = await get(path)
+			} catch (error) {
+				// Widget stays quiet if the sidecar is down; the Ops tab explains why.
+			}
+		}
+		await Promise.all([
+			load('containers', '/tower/containers'),
+			load('host', '/tower/host'),
+			load('inbox', '/tower/ops-inbox'),
+			load('smart', '/tower/smart'),
+		])
+		this.loading = false
+	},
+}
+</script>
+
+<style lang="scss" scoped>
+.tower-widget {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 4px 2px;
+
+	&__verdict {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	&__items {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+
+		li {
+			display: flex;
+			align-items: baseline;
+			gap: 8px;
+			font-size: 0.9em;
+		}
+	}
+
+	&__facts {
+		margin: 0;
+		color: var(--color-text-maxcontrast);
+		font-size: 0.9em;
+	}
+
+	&__link {
+		font-size: 0.9em;
+		color: var(--color-primary-element);
+	}
+}
+</style>

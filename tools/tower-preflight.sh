@@ -16,18 +16,18 @@ check() {
   fi
 }
 
+note_fail() {
+  echo "FAIL $1 $2"
+  fail=1
+}
+
+# --- G00 tree ---------------------------------------------------------------
 check G00 "info.xml" test -f appinfo/info.xml
 check G00 "routes.php" test -f appinfo/routes.php
 check G00 "Application.php" test -f lib/AppInfo/Application.php
-check G00 "main js" test -f js/nc_tower-main.js
-check G00 "ops js" test -f js/nc_tower-ops.js
-check G00 "ops css" test -f css/nc_tower-ops.css
-check G00 "ops template" test -f templates/ops.php
-check G00 "host template" test -f templates/host.php
-check G00 "tools template" test -f templates/tools.php
-check G00 "subnav partial" test -f templates/partials/subnav.php
 check G00 "TowerController" test -f lib/Controller/TowerController.php
 check G00 "standalone plan" test -f docs/plans/control-tower-standalone.md
+check G00 "vue rebuild plan" test -f docs/plans/control-tower-vue-rebuild.md
 check G00 "capability matrix" test -f docs/CAPABILITY_MATRIX.md
 check G00 "sidecar .env present" test -f sidecar/.env
 check G00 "sidecar .env gitignored" grep -q 'sidecar/.env' .gitignore
@@ -35,6 +35,7 @@ check G00 "sidecar .env gitignored" grep -q 'sidecar/.env' .gitignore
 ver=$(grep -oE '<version>[0-9]+\.[0-9]+\.[0-9]+</version>' appinfo/info.xml | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
 check G01 "version readable" test -n "$ver"
 
+# --- G16 attribution --------------------------------------------------------
 check G16 "LICENSE" test -f LICENSE
 check G16 "CREDITS.md" test -f CREDITS.md
 check G16 "CREDITS names Wolfgang" grep -q 'Wolfgang' CREDITS.md
@@ -43,70 +44,152 @@ check G16 "info.xml upstream author" grep -q 'Wolfgang' appinfo/info.xml
 check G16 "app id nc_tower" grep -q '<id>nc_tower</id>' appinfo/info.xml
 check G16 "name Control Tower" grep -q '<name>Control Tower</name>' appinfo/info.xml
 
+# --- G10 routes -------------------------------------------------------------
+for route in "page#ops" "page#host" "page#tools" "tower#hostGpu" "tower#fanSet" \
+             "tower#stackAction" "tower#containerExec" "tower#backupRun" "tower#dockerDf"; do
+  check G10 "route $route" grep -q "$route" appinfo/routes.php
+done
+
+# --- G13/G14 security invariants -------------------------------------------
 if grep -R "docker.sock" lib/ --include='*.php' | grep -qi mount; then
-  echo "FAIL G13 PHP must not mount docker.sock"
-  fail=1
+  note_fail G13 "PHP must not mount docker.sock"
 else
   echo "PASS G13 no docker.sock mount in PHP"
 fi
 
-if grep -R "NoAdminRequired" lib/Controller/PageController.php >/dev/null 2>&1; then
-  echo "FAIL G14 PageController still has NoAdminRequired"
-  fail=1
-else
-  echo "PASS G14 PageController admin-gated"
-fi
-
-check G10 "ops page route" grep -q "page#ops" appinfo/routes.php
-check G10 "host page route" grep -q "page#host" appinfo/routes.php
-check G10 "tools page route" grep -q "page#tools" appinfo/routes.php
-check G10 "tower gpu route" grep -q "tower#hostGpu" appinfo/routes.php
-check G10 "tower fan POST" grep -q "tower#fanSet" appinfo/routes.php
-check G10 "tower stack action" grep -q "tower#stackAction" appinfo/routes.php
-check G10 "container exec POST" grep -q "tower#containerExec" appinfo/routes.php
-check G10 "backup run POST" grep -q "tower#backupRun" appinfo/routes.php
-check G10 "docker df GET" grep -q "tower#dockerDf" appinfo/routes.php
-
 if grep -q 'docker.sock:/var/run/docker.sock:ro' sidecar/docker-compose.yml; then
-  echo "FAIL G15 sidecar sock still :ro (mutators need rw)"
-  fail=1
+  note_fail G15 "sidecar sock still :ro (mutators need rw)"
 else
   echo "PASS G15 sidecar sock not forced :ro"
 fi
 
-if grep -q "changeme" sidecar/docker-compose.yml; then
-  echo "FAIL G17 sidecar compose must not default token to changeme"
-  fail=1
-else
-  echo "PASS G17 no changeme default in compose"
-fi
+for f in sidecar/docker-compose.yml lib/Controller/TowerController.php; do
+  if grep -q "changeme" "$f"; then
+    note_fail G17 "$f must not default token to changeme"
+  else
+    echo "PASS G17 no changeme default in $f"
+  fi
+done
 
-if grep -qE "getSystemValueString\(\s*'nc_tower_sidecar_token'\s*,\s*'changeme'" lib/Controller/TowerController.php; then
-  echo "FAIL G17 PHP must not default token to changeme"
-  fail=1
+# The browser must never send the sidecar header; naming the config key in
+# operator help text is fine, shipping the value or the header is not.
+if grep -rn 'X-Ops-Token' src/ >/dev/null 2>&1; then
+  note_fail G17 "front-end source must never send X-Ops-Token"
 else
-  echo "PASS G17 no changeme default in PHP"
+  echo "PASS G17 front end never sends X-Ops-Token"
 fi
 
 tok=$(grep -E '^NC_TOWER_SIDECAR_TOKEN=' sidecar/.env | cut -d= -f2- || true)
 if [[ -z "$tok" || "$tok" == "changeme" ]]; then
-  echo "FAIL G17 sidecar/.env token missing or changeme"
-  fail=1
+  note_fail G17 "sidecar/.env token missing or changeme"
 else
   echo "PASS G17 sidecar/.env has non-changeme token"
+  if [[ -f js/nc_tower-app.js ]] && grep -qF "$tok" js/nc_tower-app.js; then
+    note_fail G17 "built bundle contains the literal sidecar token"
+  else
+    echo "PASS G17 built bundle does not contain the token value"
+  fi
 fi
 
 if grep -q prune appinfo/routes.php; then
-  echo "FAIL G18 system prune route present"
-  fail=1
+  note_fail G18 "system prune route present"
 else
   echo "PASS G18 no system prune in routes"
 fi
 if grep -qE 'host-shell|tower#shell' appinfo/routes.php; then
-  echo "FAIL G18 host-shell route present"
-  fail=1
+  note_fail G18 "host-shell route present"
 else
   echo "PASS G18 no host-shell route"
+fi
+
+# --- G19 build --------------------------------------------------------------
+check G19 "package.json" test -f package.json
+check G19 "webpack config" test -f webpack.config.js
+check G19 "src entry" test -f src/main.js
+check G19 "widget entry" test -f src/widget.js
+check G19 "vue-demi prebuild hook" grep -q 'fix-vue-demi' package.json
+check G19 "app bundle built" test -f js/nc_tower-app.js
+check G19 "widget bundle built" test -f js/nc_tower-widget.js
+# A stub or failed build still leaves a file behind; require real content.
+if [[ -f js/nc_tower-app.js ]] && [[ $(stat -c%s js/nc_tower-app.js) -gt 200000 ]]; then
+  echo "PASS G19 app bundle is a real build"
+else
+  note_fail G19 "app bundle missing or suspiciously small"
+fi
+for tpl in index ops host tools apps system user; do
+  check G19 "template $tpl mounts bundle" grep -q "nc_tower-app" "templates/$tpl.php"
+  check G19 "template $tpl has mount point" grep -q 'id="nc_tower"' "templates/$tpl.php"
+done
+
+# --- G21 admin gating -------------------------------------------------------
+# Admin gating is by omission: Nextcloud requires admin unless a controller
+# method opts out. One stray attribute anywhere would expose host mutators,
+# so assert across every controller, not just PageController.
+if grep -rn '^\s*#\[NoAdminRequired\]' lib/Controller/ >/dev/null 2>&1; then
+  note_fail G21 "active #[NoAdminRequired] found in lib/Controller"
+  grep -rn '^\s*#\[NoAdminRequired\]' lib/Controller/ | sed 's/^/    /'
+else
+  echo "PASS G21 no active NoAdminRequired in any controller"
+fi
+
+# --- G22 dead weight --------------------------------------------------------
+dead=0
+for f in js/nc_tower-main.js js/nc_tower-apps.js js/nc_tower-system.js js/nc_tower-user.js js/nc_tower-ops.js; do
+  if [[ -f "$f" ]]; then
+    note_fail G22 "prebuilt bundle still present: $f"
+    dead=1
+  fi
+done
+[[ $dead -eq 0 ]] && echo "PASS G22 prebuilt Admin Cockpit bundles removed"
+
+# --- G20 payload shape ------------------------------------------------------
+# The 1.8.1 defects all passed every route gate: the routes existed and the
+# files were deployed, but the field names the UI reads had drifted. Assert
+# the contract itself.
+SIDECAR_URL="${NC_TOWER_SIDECAR_URL:-http://127.0.0.1:18765}"
+if [[ -z "$tok" ]]; then
+  echo "SKIP G20 payload shape (no sidecar token)"
+elif ! curl -fsS -m 5 -H "X-Ops-Token: $tok" "$SIDECAR_URL/health" >/dev/null 2>&1; then
+  echo "SKIP G20 payload shape (sidecar unreachable at $SIDECAR_URL)"
+else
+  payload_gate() {
+    local id="$1" path="$2" script="$3"
+    local body
+    if ! body=$(curl -fsS -m 90 -H "X-Ops-Token: $tok" "$SIDECAR_URL$path" 2>/dev/null); then
+      note_fail "$id" "could not fetch $path"
+      return
+    fi
+    if printf '%s' "$body" | python3 -c "$script"; then
+      echo "PASS $id $path"
+    else
+      note_fail "$id" "$path payload shape"
+    fi
+  }
+
+  payload_gate G20 /host/proc '
+import sys, json
+d = json.load(sys.stdin)
+rows = d.get("processes") or []
+sys.exit(0 if rows and all("pid" in r and "command" in r and "cpu" in r for r in rows) else 1)
+'
+  payload_gate G20 /host/packages '
+import sys, json
+d = json.load(sys.stdin)
+rows = d.get("packages") or []
+sys.exit(0 if all("new_version" in r or "raw" in r for r in rows) else 1)
+'
+  payload_gate G20 /host/smart '
+import sys, json
+d = json.load(sys.stdin)
+if d.get("unavailable"):
+    sys.exit(0)
+disks = d.get("disks") or []
+# A powered-on drive reporting single-digit hours means the attribute parser
+# grabbed the next row ID again (the 1.8.1 defect).
+bad = [x for x in disks if x.get("power_on_hours") is not None and 0 < x["power_on_hours"] < 100]
+nas_ok = all("ok" in n for n in (d.get("nas_mounts") or []))
+sys.exit(0 if not bad and nas_ok else 1)
+'
 fi
 
 exit "$fail"
