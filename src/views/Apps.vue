@@ -10,7 +10,7 @@
 			:loading="loading.updates"
 			:error="errors.updates"
 			default-open
-			@refresh="poller.refresh('updates')">
+			@refresh="refresh('updates')">
 			<DataTable :columns="updateColumns" :rows="updates.apps || []" row-key="id" empty-text="All apps up to date">
 				<template #cell-name="{ row }">
 					<span class="tower-app"><img v-if="row.icon" :src="row.icon" alt="" class="tower-app__icon">{{ appLabel(row) }}</span>
@@ -31,7 +31,7 @@
 			:loading="loading.info"
 			:error="errors.info"
 			default-open
-			@refresh="poller.refresh('info')">
+			@refresh="refresh('info')">
 			<div class="tower-toolbar">
 				<NcTextField :value.sync="filter" label="Filter apps" placeholder="Filter by name or id" />
 			</div>
@@ -59,7 +59,7 @@
 			:summary="`${(info.thisappsdisabledfull || []).length} disabled`"
 			:loading="loading.info"
 			:error="errors.info"
-			@refresh="poller.refresh('info')">
+			@refresh="refresh('info')">
 			<DataTable :columns="appColumns" :rows="filtered(info.thisappsdisabledfull)" row-key="appid" default-sort="appid" empty-text="None">
 				<template #cell-appid="{ row }">
 					<span class="tower-app"><img v-if="row.icon" :src="row.icon" alt="" class="tower-app__icon">{{ appLabel(row) }}</span>
@@ -78,7 +78,7 @@
 			:summary="`${(info.adminsections || []).length} admin · ${(info.personalsections || []).length} personal`"
 			:loading="loading.info"
 			:error="errors.info"
-			@refresh="poller.refresh('info')">
+			@refresh="refresh('info')">
 			<h4 class="tower-subhead">Admin</h4>
 			<p class="tower-muted">{{ (info.adminsectionsappname || []).join(', ') || '—' }}</p>
 			<h4 class="tower-subhead">Personal</h4>
@@ -107,14 +107,14 @@ export default {
 	components: { ConfirmDialog, DataTable, Section, NcButton, NcTextField },
 	data() {
 		return {
-			poller: new Poller(),
 			info: {},
 			updates: {},
 			loading: {},
 			errors: {},
 			filter: '',
 			busy: '',
-			confirm: { open: false, title: '', message: '', confirmLabel: 'Confirm', phrase: '', danger: false, action: null },
+			confirm: { open: false, title: '', message: '', confirmLabel: 'Confirm', phrase: '', danger: false },
+			pendingAction: null,
 			appColumns: [
 				{ key: 'appid', label: 'App' },
 				{ key: 'version', label: 'Version' },
@@ -136,6 +136,7 @@ export default {
 		},
 	},
 	created() {
+		this.poller = new Poller()
 		this.poller.add('info', () => this.fetch('info', '/appsinfo'), 120000)
 		this.poller.add('updates', () => this.fetch('updates', '/appupdates'), 300000)
 		this.poller.start()
@@ -144,6 +145,13 @@ export default {
 		this.poller.stop()
 	},
 	methods: {
+		/**
+		 * @param {string} [name] section to refresh; omit for all
+		 * @return {Promise<void>} resolves once the loaders settle
+		 */
+		refresh(name) {
+			return this.poller.refresh(name)
+		},
 		async fetch(key, path) {
 			this.$set(this.loading, key, true)
 			try {
@@ -195,12 +203,13 @@ export default {
 				confirmLabel: action === 'enable' ? 'Enable' : 'Disable',
 				phrase: '',
 				danger: action === 'disable',
-				action: () => this.toggle(action, row.appid),
 			}
+			this.pendingAction = () => this.toggle(action, row.appid)
 		},
 		async runConfirmed() {
-			const action = this.confirm.action
+			const action = this.pendingAction
 			this.confirm.open = false
+			this.pendingAction = null
 			if (action) {
 				await action()
 			}

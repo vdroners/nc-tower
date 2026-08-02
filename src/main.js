@@ -7,7 +7,7 @@ Vue.config.productionTip = false
  * Every Control Tower page renders <div id="nc_tower" data-page="…">. The
  * bundle is shared, so which view boots is decided by that attribute.
  */
-document.addEventListener('DOMContentLoaded', () => {
+function boot() {
 	const mount = document.getElementById('nc_tower')
 	if (!mount) {
 		return
@@ -18,4 +18,12 @@ document.addEventListener('DOMContentLoaded', () => {
 		el: mount,
 		render: (h) => h(App, { props: { page } }),
 	})
-})
+}
+
+// Scripts normally arrive deferred, i.e. before DOMContentLoaded — but one that
+// lands after it would never fire the listener, leaving a blank page.
+if (document.readyState === 'loading') {
+	document.addEventListener('DOMContentLoaded', boot)
+} else {
+	boot()
+}

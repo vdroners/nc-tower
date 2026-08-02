@@ -7,7 +7,7 @@ Vue.config.productionTip = false
  * Dashboard widget entry. Nextcloud calls the registered callback with the
  * element it wants the widget rendered into.
  */
-document.addEventListener('DOMContentLoaded', () => {
+function register() {
 	if (!window.OCA?.Dashboard?.register) {
 		return
 	}
@@ -17,4 +17,10 @@ document.addEventListener('DOMContentLoaded', () => {
 		// eslint-disable-next-line no-new
 		new Vue({ el: mount, render: (h) => h(Widget) })
 	})
-})
+}
+
+if (document.readyState === 'loading') {
+	document.addEventListener('DOMContentLoaded', register)
+} else {
+	register()
+}

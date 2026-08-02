@@ -12,7 +12,7 @@
 			:loading="loading.mounts"
 			:error="errors.mounts"
 			default-open
-			@refresh="poller.refresh('mounts')">
+			@refresh="refresh('mounts')">
 			<h4 class="tower-subhead">Watched paths</h4>
 			<DataTable :columns="watchedColumns" :rows="mounts.interesting || []" row-key="path" empty-text="None">
 				<template #cell-used_pct="{ row }">
@@ -38,7 +38,7 @@
 			:severity="packages.packages && packages.packages.length ? 'warn' : 'ok'"
 			:loading="loading.packages"
 			:error="errors.packages"
-			@refresh="poller.refresh('packages')">
+			@refresh="refresh('packages')">
 			<NcNoteCard v-if="packages.unavailable" type="warning">Unavailable: {{ packages.reason || packages.error }}</NcNoteCard>
 			<DataTable v-else
 				:columns="packageColumns"
@@ -54,11 +54,12 @@
 			:summary="`top ${(proc.processes || []).length} by CPU`"
 			:loading="loading.proc"
 			:error="errors.proc"
-			@refresh="poller.refresh('proc')">
+			@refresh="refresh('proc')">
 			<DataTable :columns="procColumns"
 				:rows="proc.processes || []"
 				row-key="pid"
 				default-sort="cpu"
+				default-desc
 				empty-text="None">
 				<template #cell-rss_kb="{ row }">{{ fmt.bytes((row.rss_kb || 0) * 1024) }}</template>
 				<template #cell-command="{ row }">
@@ -75,7 +76,7 @@
 			:loading="loading.systemd"
 			:error="errors.systemd"
 			default-open
-			@refresh="poller.refresh('systemd')">
+			@refresh="refresh('systemd')">
 			<NcNoteCard v-if="systemd.unavailable" type="warning">Unavailable: {{ systemd.reason }}</NcNoteCard>
 			<DataTable v-else :columns="systemdColumns" :rows="systemd.units || []" row-key="unit" empty-text="None">
 				<template #cell-active="{ row }">
@@ -96,7 +97,7 @@
 			:summary="`${(cron.root_crontab || []).length} root entries · ${(cron.cron_d_files || []).length} files in /etc/cron.d`"
 			:loading="loading.cron"
 			:error="errors.cron"
-			@refresh="poller.refresh('cron')">
+			@refresh="refresh('cron')">
 			<NcNoteCard v-if="cron.error" type="warning">{{ cron.error }}</NcNoteCard>
 			<h4 class="tower-subhead">root crontab</h4>
 			<ul class="tower-list">
@@ -116,7 +117,7 @@
 			:summary="`${(net.ifaces || []).length} interface(s)`"
 			:loading="loading.net"
 			:error="errors.net"
-			@refresh="poller.refresh('net')">
+			@refresh="refresh('net')">
 			<DataTable :columns="netColumns" :rows="net.ifaces || []" row-key="name" default-sort="name" empty-text="None">
 				<template #cell-addresses="{ row }">{{ fmt.addresses(row) || '—' }}</template>
 				<template #cell-state="{ row }">
@@ -152,7 +153,6 @@ export default {
 	data() {
 		return {
 			fmt,
-			poller: new Poller(),
 			mounts: {},
 			packages: {},
 			proc: {},
@@ -161,7 +161,8 @@ export default {
 			net: {},
 			loading: {},
 			errors: {},
-			confirm: { open: false, title: '', message: '', confirmLabel: 'Confirm', phrase: '', danger: false, action: null },
+			confirm: { open: false, title: '', message: '', confirmLabel: 'Confirm', phrase: '', danger: false },
+			pendingAction: null,
 			watchedColumns: [
 				{ key: 'path', label: 'Path' },
 				{ key: 'device', label: 'Device' },
@@ -219,6 +220,8 @@ export default {
 		},
 	},
 	created() {
+		// Not in data(): observing timer handles and a Map buys nothing.
+		this.poller = new Poller()
 		const p = this.poller
 		p.add('proc', () => this.fetch('proc', '/tower/proc'), 15000)
 		p.add('systemd', () => this.fetch('systemd', '/tower/systemd'), 30000)
@@ -232,6 +235,13 @@ export default {
 		this.poller.stop()
 	},
 	methods: {
+		/**
+		 * @param {string} [name] section to refresh; omit for all
+		 * @return {Promise<void>} resolves once the loaders settle
+		 */
+		refresh(name) {
+			return this.poller.refresh(name)
+		},
 		async fetch(key, path) {
 			this.$set(this.loading, key, true)
 			try {
@@ -251,12 +261,13 @@ export default {
 				confirmLabel: 'Restart',
 				phrase: '',
 				danger: true,
-				action: () => this.restart(unit),
 			}
+			this.pendingAction = () => this.restart(unit)
 		},
 		async runConfirmed() {
-			const action = this.confirm.action
+			const action = this.pendingAction
 			this.confirm.open = false
+			this.pendingAction = null
 			if (action) {
 				await action()
 			}

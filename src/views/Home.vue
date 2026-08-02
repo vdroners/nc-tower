@@ -44,7 +44,6 @@ export default {
 	components: { AttentionList, NcNoteCard, StatusBanner },
 	data() {
 		return {
-			poller: new Poller(),
 			host: {},
 			containers: {},
 			smart: {},
@@ -129,6 +128,8 @@ export default {
 		},
 	},
 	created() {
+		// Not in data(): observing timer handles and a Map buys nothing.
+		this.poller = new Poller()
 		const p = this.poller
 		p.add('containers', () => this.fetch('containers', '/tower/containers'), 30000)
 		p.add('host', () => this.fetch('host', '/tower/host'), 30000)
@@ -143,6 +144,13 @@ export default {
 		this.poller.stop()
 	},
 	methods: {
+		/**
+		 * @param {string} [name] section to refresh; omit for all
+		 * @return {Promise<void>} resolves once the loaders settle
+		 */
+		refresh(name) {
+			return this.poller.refresh(name)
+		},
 		async fetch(key, path) {
 			try {
 				this[key] = await get(path)

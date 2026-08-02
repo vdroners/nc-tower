@@ -8,7 +8,12 @@
 						:class="[`is-${col.align || 'start'}`, { 'is-sortable': col.sortable !== false }]"
 						:style="col.width ? { width: col.width } : null"
 						scope="col"
-						@click="col.sortable === false ? null : toggleSort(col.key)">
+						:tabindex="col.sortable === false ? null : 0"
+						:role="col.sortable === false ? null : 'button'"
+						:aria-sort="sortKey === col.key ? (sortAsc ? 'ascending' : 'descending') : null"
+						@click="col.sortable === false ? null : toggleSort(col.key)"
+						@keydown.enter.prevent="col.sortable === false ? null : toggleSort(col.key)"
+						@keydown.space.prevent="col.sortable === false ? null : toggleSort(col.key)">
 						{{ col.label }}
 						<span v-if="sortKey === col.key" class="tower-table__caret">{{ sortAsc ? '▲' : '▼' }}</span>
 					</th>
@@ -62,11 +67,16 @@ export default {
 			type: String,
 			default: '',
 		},
+		/** Start the default sort descending — "top N by CPU" is not ascending. */
+		defaultDesc: {
+			type: Boolean,
+			default: false,
+		},
 	},
 	data() {
 		return {
 			sortKey: this.defaultSort,
-			sortAsc: true,
+			sortAsc: !this.defaultDesc,
 		}
 	},
 	computed: {

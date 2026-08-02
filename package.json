@@ -1,14 +1,15 @@
 {
 	"name": "nc_tower",
-	"version": "1.9.0",
+	"version": "1.9.1",
 	"description": "Control Tower \u2014 Nextcloud orchestrator for admin, stacks, host health, and ops inbox",
 	"license": "AGPL-3.0-or-later",
 	"private": true,
 	"scripts": {
-		"prebuild": "node scripts/fix-vue-demi.mjs",
+		"prebuild": "node scripts/fix-vue-demi.mjs && node scripts/check-template-refs.mjs",
 		"build": "webpack --mode production",
 		"dev": "node scripts/fix-vue-demi.mjs && webpack --mode development --watch",
-		"lint": "eslint src/"
+		"lint": "eslint src/",
+		"check:refs": "node scripts/check-template-refs.mjs"
 	},
 	"dependencies": {
 		"@nextcloud/axios": "^2.5.0",

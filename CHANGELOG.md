@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.9.1] - 2026-08-02
+
+### Fixed
+- Ops failed to render: the template read `stackRows`, which no component ever
+  declared, so the whole flagship view died on a TypeError. Found by the new
+  reference checker, not by the build — webpack compiles such templates happily
+- Host → Top processes listed the *lowest* CPU first: the table re-sorted the
+  sidecar's `--sort=-pcpu` output ascending. `DataTable` gained `default-desc`
+- Confirmation dialogs received their callback through `v-bind`, so Vue
+  stringified a function onto the DOM as an `action` attribute; the pending
+  callback is now held separately from the dialog's props
+- Opening logs for a second container left the first container's 2 s follow
+  timer running, overwriting the new dialog's contents
+- The app never mounted if its script landed after `DOMContentLoaded`, leaving a
+  blank page; both entries now check `document.readyState`
+
+### Changed
+- The `Poller` moved out of `data()`. Vue was observing its Map and timer
+  handles for a value that is never rendered; templates call a `refresh()` method
+- Sortable table headers are keyboard reachable and expose `aria-sort`
+
+### Added
+- `scripts/check-template-refs.mjs` — compiles every SFC template and asserts each
+  name it uses is declared in data / computed / methods / props / components.
+  Runs from `prebuild` and as preflight gate G23
+
 ## [1.9.0] - 2026-08-01
 
 Full Vue rebuild of all seven tabs. Plan: `docs/plans/control-tower-vue-rebuild.md`.

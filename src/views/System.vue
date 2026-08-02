@@ -9,7 +9,7 @@
 			:loading="loading.info"
 			:error="errors.info"
 			default-open
-			@refresh="poller.refresh('info')">
+			@refresh="refresh('info')">
 			<dl class="tower-facts">
 				<template v-for="fact in overviewFacts">
 					<dt :key="`${fact.label}-l`">{{ fact.label }}</dt>
@@ -27,7 +27,7 @@
 			:loading="loading.info"
 			:error="errors.info"
 			default-open
-			@refresh="poller.refresh('info')">
+			@refresh="refresh('info')">
 			<div class="tower-chips">
 				<span class="tower-chip">RAM {{ info.ram_used || '—' }} / {{ info.ram_total || '—' }}</span>
 				<span class="tower-chip">available {{ info.ram_available || '—' }}</span>
@@ -48,7 +48,7 @@
 			:summary="info.php_version ? `PHP ${info.php_version}` : ''"
 			:loading="loading.info"
 			:error="errors.info"
-			@refresh="poller.refresh('info')">
+			@refresh="refresh('info')">
 			<dl class="tower-facts">
 				<dt>Version</dt><dd>{{ info.php_version || '—' }}</dd>
 				<dt>Memory limit</dt><dd>{{ info.memory_limit || '—' }}</dd>
@@ -66,7 +66,7 @@
 			:summary="`${(info.network || []).length} interface(s)`"
 			:loading="loading.info"
 			:error="errors.info"
-			@refresh="poller.refresh('info')">
+			@refresh="refresh('info')">
 			<DataTable :columns="networkColumns" :rows="info.network || []" row-key="interface" empty-text="None" />
 		</Section>
 
@@ -75,7 +75,7 @@
 			:summary="info.nc_logfile_size || ''"
 			:loading="loading.info"
 			:error="errors.info"
-			@refresh="poller.refresh('info')">
+			@refresh="refresh('info')">
 			<dl class="tower-facts">
 				<dt>Path</dt><dd class="tower-mono">{{ info.nc_logfile || '—' }}</dd>
 				<dt>Size</dt><dd>{{ info.nc_logfile_size || '—' }}</dd>
@@ -100,7 +100,6 @@ export default {
 	data() {
 		return {
 			fmt,
-			poller: new Poller(),
 			info: {},
 			storage: {},
 			sql: {},
@@ -158,6 +157,7 @@ export default {
 		},
 	},
 	created() {
+		this.poller = new Poller()
 		this.poller.add('info', () => Promise.all([
 			this.fetch('info', '/systeminfo'),
 			this.fetch('storage', '/storage', 'info'),
@@ -169,6 +169,13 @@ export default {
 		this.poller.stop()
 	},
 	methods: {
+		/**
+		 * @param {string} [name] section to refresh; omit for all
+		 * @return {Promise<void>} resolves once the loaders settle
+		 */
+		refresh(name) {
+			return this.poller.refresh(name)
+		},
 		async fetch(key, path, loadingKey) {
 			const slot = loadingKey || key
 			this.$set(this.loading, slot, true)

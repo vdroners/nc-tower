@@ -9,7 +9,7 @@
 			:loading="loading.data"
 			:error="errors.data"
 			default-open
-			@refresh="poller.refresh('data')">
+			@refresh="refresh('data')">
 			<div class="tower-toolbar">
 				<NcTextField :value.sync="filter" label="Filter users" placeholder="Filter by id, name or email" />
 				<NcButton type="primary" @click="openCreate">New user</NcButton>
@@ -38,7 +38,7 @@
 			:summary="`${(data.groups || []).length} group(s)`"
 			:loading="loading.data"
 			:error="errors.data"
-			@refresh="poller.refresh('data')">
+			@refresh="refresh('data')">
 			<div class="tower-toolbar">
 				<NcTextField :value.sync="newGroup" label="New group name" placeholder="group id" />
 				<NcButton type="secondary" :disabled="!newGroup.trim()" @click="addGroup">Add group</NcButton>
@@ -104,7 +104,6 @@ export default {
 	components: { ConfirmDialog, DataTable, Section, NcActionButton, NcActions, NcButton, NcDialog, NcTextField },
 	data() {
 		return {
-			poller: new Poller(),
 			data: {},
 			loading: {},
 			errors: {},
@@ -112,7 +111,8 @@ export default {
 			newGroup: '',
 			create: { open: false, uid: '', displayname: '', email: '', password: '', groups: '', quota: '', busy: false },
 			notify: { open: false, who: '', group: false, message: '' },
-			confirm: { open: false, title: '', message: '', confirmLabel: 'Confirm', phrase: '', danger: false, action: null },
+			confirm: { open: false, title: '', message: '', confirmLabel: 'Confirm', phrase: '', danger: false },
+			pendingAction: null,
 			userColumns: [
 				{ key: 'uid', label: 'User ID' },
 				{ key: 'displayname', label: 'Display name' },
@@ -147,6 +147,7 @@ export default {
 		},
 	},
 	created() {
+		this.poller = new Poller()
 		this.poller.add('data', () => this.fetch('data', '/usercount'), 120000)
 		this.poller.start()
 	},
@@ -154,6 +155,13 @@ export default {
 		this.poller.stop()
 	},
 	methods: {
+		/**
+		 * @param {string} [name] section to refresh; omit for all
+		 * @return {Promise<void>} resolves once the loaders settle
+		 */
+		refresh(name) {
+			return this.poller.refresh(name)
+		},
 		async fetch(key, path) {
 			this.$set(this.loading, key, true)
 			try {
@@ -198,8 +206,8 @@ export default {
 				confirmLabel: 'Delete user',
 				phrase: row.uid,
 				danger: true,
-				action: () => this.remove(row.uid),
 			}
+			this.pendingAction = () => this.remove(row.uid)
 		},
 		askDeleteGroup(row) {
 			this.confirm = {
@@ -209,12 +217,13 @@ export default {
 				confirmLabel: 'Delete group',
 				phrase: '',
 				danger: true,
-				action: () => this.removeGroup(row.gid),
 			}
+			this.pendingAction = () => this.removeGroup(row.gid)
 		},
 		async runConfirmed() {
-			const action = this.confirm.action
+			const action = this.pendingAction
 			this.confirm.open = false
+			this.pendingAction = null
 			if (action) {
 				await action()
 			}

@@ -16,7 +16,7 @@
 			:loading="loading.containers"
 			:error="errors.containers"
 			default-open
-			@refresh="poller.refresh('containers')">
+			@refresh="refresh('containers')">
 			<div class="tower-toolbar">
 				<NcTextField :value.sync="containerFilter"
 					label="Filter containers"
@@ -58,7 +58,7 @@
 			:summary="`${stackRows.length} compose file(s) on pinned dirs`"
 			:loading="loading.stacks"
 			:error="errors.stacks"
-			@refresh="poller.refresh('stacks')">
+			@refresh="refresh('stacks')">
 			<DataTable :columns="stackColumns" :rows="stackRows" row-key="file" empty-text="No compose files">
 				<template #cell-services="{ row }">{{ (row.services || []).join(', ') || '—' }}</template>
 				<template #cell-running_hint="{ row }">{{ row.running_hint ? 'running' : '—' }}</template>
@@ -83,7 +83,7 @@
 			:severity="sev.host"
 			:loading="loading.host"
 			:error="errors.host"
-			@refresh="poller.refresh('host')">
+			@refresh="refresh('host')">
 			<div class="tower-chips">
 				<span class="tower-chip">CPU {{ host.cpu_pct != null ? `${host.cpu_pct}%` : '—' }}</span>
 				<span class="tower-chip">load {{ (host.loadavg || []).join(' / ') || '—' }}</span>
@@ -108,7 +108,7 @@
 			:severity="sev.smart"
 			:loading="loading.smart"
 			:error="errors.smart"
-			@refresh="poller.refresh('smart')">
+			@refresh="refresh('smart')">
 			<NcNoteCard v-if="smart.unavailable" type="warning">Unavailable: {{ smart.reason }}</NcNoteCard>
 			<template v-else>
 				<DataTable :columns="smartColumns" :rows="smart.disks || []" row-key="device" empty-text="No disks">
@@ -139,7 +139,7 @@
 			:severity="sev.gpu"
 			:loading="loading.gpu"
 			:error="errors.gpu"
-			@refresh="poller.refresh('gpu')">
+			@refresh="refresh('gpu')">
 			<NcNoteCard v-if="gpu.unavailable" type="warning">Unavailable: {{ gpu.reason }}</NcNoteCard>
 			<template v-else>
 				<DataTable :columns="gpuColumns" :rows="gpu.gpus || []" row-key="uuid" empty-text="No GPUs">
@@ -163,7 +163,7 @@
 			:summary="fanSummary"
 			:loading="loading.fan"
 			:error="errors.fan"
-			@refresh="poller.refresh('fan')">
+			@refresh="refresh('fan')">
 			<template v-if="!fan.unavailable">
 				<div class="tower-toolbar">
 					<NcTextField :value.sync="fanSpeed" type="number" label="All GPU fans %" :label-visible="true" />
@@ -183,7 +183,7 @@
 			:summary="engineSummary"
 			:loading="loading.engine"
 			:error="errors.engine"
-			@refresh="poller.refresh('engine')">
+			@refresh="refresh('engine')">
 			<div class="tower-chips">
 				<span class="tower-chip">{{ engine.Name || '—' }}</span>
 				<span class="tower-chip">v{{ engine.ServerVersion || '—' }}</span>
@@ -199,7 +199,7 @@
 			:summary="`${(images.images || []).length} image(s)`"
 			:loading="loading.images"
 			:error="errors.images"
-			@refresh="poller.refresh('images')">
+			@refresh="refresh('images')">
 			<div class="tower-toolbar">
 				<NcTextField :value.sync="pullRef" label="Image reference" placeholder="repo/name:tag" />
 				<NcButton type="secondary" :disabled="!pullRef" @click="askPull(pullRef)">Pull</NcButton>
@@ -219,7 +219,7 @@
 			:summary="`${(volumes.volumes || []).length} volume(s)`"
 			:loading="loading.volumes"
 			:error="errors.volumes"
-			@refresh="poller.refresh('volumes')">
+			@refresh="refresh('volumes')">
 			<DataTable :columns="volumeColumns" :rows="volumeRows" row-key="name" default-sort="name" empty-text="No volumes">
 				<template #cell-actions="{ row }">
 					<div class="tower-actions-cell">
@@ -234,7 +234,7 @@
 			:summary="`${(networks.networks || []).length} network(s)`"
 			:loading="loading.networks"
 			:error="errors.networks"
-			@refresh="poller.refresh('networks')">
+			@refresh="refresh('networks')">
 			<DataTable :columns="networkColumns" :rows="networkRows" row-key="name" default-sort="name" empty-text="No networks">
 				<template #cell-actions="{ row }">
 					<div class="tower-actions-cell">
@@ -249,7 +249,7 @@
 			:summary="`${(events.events || []).length} in last 15 min`"
 			:loading="loading.events"
 			:error="errors.events"
-			@refresh="poller.refresh('events')">
+			@refresh="refresh('events')">
 			<DataTable :columns="eventColumns" :rows="eventRows" empty-text="No recent events" />
 		</Section>
 
@@ -259,7 +259,7 @@
 			:severity="sev.backup"
 			:loading="loading.inbox"
 			:error="errors.inbox"
-			@refresh="poller.refresh('inbox')">
+			@refresh="refresh('inbox')">
 			<p :class="backup.ok ? 'tower-good' : 'tower-warn-text'">
 				<strong>{{ backup.status || '—' }}</strong> — {{ backup.summary || '' }}
 			</p>
@@ -274,7 +274,7 @@
 			:severity="sev.inbox"
 			:loading="loading.inbox"
 			:error="errors.inbox"
-			@refresh="poller.refresh('inbox')">
+			@refresh="refresh('inbox')">
 			<template v-if="(inbox.critical_recent || []).length">
 				<h4 class="tower-subhead tower-bad">Critical</h4>
 				<DataTable :columns="inboxColumns" :rows="inbox.critical_recent" empty-text="None">
@@ -356,7 +356,6 @@ export default {
 		return {
 			fmt,
 			lockedHint: LOCKED_HINT,
-			poller: new Poller(),
 			host: {},
 			engineRaw: {},
 			df: {},
@@ -381,7 +380,8 @@ export default {
 			updatedAt: '',
 			logFollow: false,
 			logTimer: null,
-			confirm: { open: false, title: '', message: '', confirmLabel: 'Confirm', phrase: '', danger: false, action: null },
+			confirm: { open: false, title: '', message: '', confirmLabel: 'Confirm', phrase: '', danger: false },
+			pendingAction: null,
 			output: { open: false, title: '', text: '', kind: '', follow: false, name: '' },
 			exec: { open: false, name: '', raw: '["ls","-la"]', out: '', busy: false },
 			containerColumns: [
@@ -582,6 +582,9 @@ export default {
 		fanStatusText() {
 			return JSON.stringify(this.fan.status ?? this.fan, null, 2).slice(0, 1500)
 		},
+		stackRows() {
+			return this.stacks.stacks || []
+		},
 		dfRows() {
 			return (this.df.rows || []).filter((row) => typeof row === 'object')
 		},
@@ -642,6 +645,8 @@ export default {
 		},
 	},
 	created() {
+		// Not in data(): observing timer handles and a Map buys nothing.
+		this.poller = new Poller()
 		const p = this.poller
 		p.add('containers', () => this.fetch('containers', '/tower/containers'), 10000)
 		p.add('host', () => this.fetch('host', '/tower/host'), 15000)
@@ -670,6 +675,13 @@ export default {
 		this.stopLogFollow()
 	},
 	methods: {
+		/**
+		 * @param {string} [name] section to refresh; omit for all
+		 * @return {Promise<void>} resolves once the loaders settle
+		 */
+		refresh(name) {
+			return this.poller.refresh(name)
+		},
 		async fetch(key, path, params, loadingKey) {
 			const slot = loadingKey || key
 			this.$set(this.loading, slot, true)
@@ -701,8 +713,8 @@ export default {
 				confirmLabel: action,
 				phrase: action === 'recreate' ? 'RECREATE' : '',
 				danger,
-				action: () => this.runContainer(action, name),
 			}
+			this.pendingAction = () => this.runContainer(action, name)
 		},
 		askStack(action, row) {
 			const risky = row.risky || ['down', 'rebuild'].includes(action)
@@ -713,8 +725,8 @@ export default {
 				confirmLabel: action,
 				phrase: risky ? 'YES' : '',
 				danger: risky,
-				action: () => this.runStack(action, row.file),
 			}
+			this.pendingAction = () => this.runStack(action, row.file)
 		},
 		askPull(image) {
 			this.confirm = {
@@ -724,8 +736,8 @@ export default {
 				confirmLabel: 'Pull',
 				phrase: '',
 				danger: false,
-				action: () => this.runPull(image),
 			}
+			this.pendingAction = () => this.runPull(image)
 		},
 		askFan(op) {
 			this.confirm = {
@@ -735,8 +747,8 @@ export default {
 				confirmLabel: 'Apply',
 				phrase: '',
 				danger: false,
-				action: () => this.runFan(op),
 			}
+			this.pendingAction = () => this.runFan(op)
 		},
 		askBackup() {
 			this.confirm = {
@@ -746,12 +758,13 @@ export default {
 				confirmLabel: 'Run backup',
 				phrase: '',
 				danger: false,
-				action: () => this.runBackup(),
 			}
+			this.pendingAction = () => this.runBackup()
 		},
 		async runConfirmed() {
-			const action = this.confirm.action
+			const action = this.pendingAction
 			this.confirm.open = false
+			this.pendingAction = null
 			if (action) {
 				await action()
 			}
@@ -795,6 +808,10 @@ export default {
 		},
 
 		async openLogs(name) {
+			// A follow timer from a previously opened container would otherwise
+			// keep polling and overwrite this dialog's body.
+			this.stopLogFollow()
+			this.logFollow = false
 			this.output = { open: true, title: `Logs — ${name}`, text: 'Loading…', kind: 'logs', follow: true, name }
 			await this.loadLogs(name)
 		},

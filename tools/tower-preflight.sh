@@ -121,6 +121,20 @@ for tpl in index ops host tools apps system user; do
   check G19 "template $tpl has mount point" grep -q 'id="nc_tower"' "templates/$tpl.php"
 done
 
+# --- G23 template references ------------------------------------------------
+# webpack compiles a template that reads an undeclared name; the failure only
+# appears as a render-time TypeError in the browser. Assert the surface.
+if [[ -d node_modules ]]; then
+  if node scripts/check-template-refs.mjs >/dev/null 2>&1; then
+    echo "PASS G23 every name used in a template is declared"
+  else
+    note_fail G23 "undefined template reference (run npm run check:refs)"
+    node scripts/check-template-refs.mjs 2>&1 | sed 's/^/    /'
+  fi
+else
+  echo "SKIP G23 template refs (node_modules not installed)"
+fi
+
 # --- G21 admin gating -------------------------------------------------------
 # Admin gating is by omission: Nextcloud requires admin unless a controller
 # method opts out. One stray attribute anywhere would expose host mutators,
