@@ -100,12 +100,27 @@ describe('assess — ops inbox and backups', () => {
 		expect(result.level).toBe(CRIT)
 	})
 
+	it('warns on recent warn-level inbox rows', () => {
+		const result = assess({
+			inbox: {
+				inbox_recent: [
+					{ monitor: 'base-station-freshness', status: 'warn' },
+					{ monitor: 'container-watchdog', status: 'warn' },
+				],
+				critical_recent: [],
+			},
+		})
+		expect(result.level).toBe(WARN)
+		expect(find(result, '2 ops warning')).toBeTruthy()
+	})
+
 	it('warns when the last backup failed', () => {
 		const result = assess({
 			inbox: { backup: { ok: false, stale: false, status: 'warn', summary: 'TimescaleDB backup failed' } },
 		})
 		expect(result.level).toBe(WARN)
 		expect(find(result, 'TimescaleDB backup failed')).toBeTruthy()
+		expect(result.items[0].title).toBe('TimescaleDB backup failed')
 	})
 
 	it('warns when the backup is stale even if it reported ok', () => {
@@ -117,9 +132,21 @@ describe('assess — ops inbox and backups', () => {
 describe('assess — Nextcloud platform health', () => {
 	it('reports an available Nextcloud update', () => {
 		const result = assess({
-			system: { nc_updateAvailable: true, nc_updateVersion: '34.0.2.1', nc_currentVersionimplode: '33.0.7.1' },
+			system: {
+				nc_updateCheckAvailable: true,
+				nc_updateAvailable: true,
+				nc_updateVersion: '34.0.2.1',
+				nc_currentVersionimplode: '33.0.7.1',
+			},
 		})
 		expect(find(result, '34.0.2.1')).toBeTruthy()
+	})
+
+	it('ignores stubbed NC update checks that always report false', () => {
+		const result = assess({
+			system: { nc_updateCheckAvailable: false, nc_updateAvailable: false },
+		})
+		expect(result.items.filter((item) => /Nextcloud .* available/.test(item.title))).toHaveLength(0)
 	})
 
 	it('parses the pre-formatted log size and warns past 100 MB', () => {
@@ -133,8 +160,21 @@ describe('assess — Nextcloud platform health', () => {
 	})
 
 	it('reports pending app updates', () => {
-		expect(assess({ updates: { appscount: 3 } }).level).toBe(WARN)
-		expect(assess({ updates: { appscount: 0 } }).items).toHaveLength(0)
+		expect(assess({ updates: { appscount: 3, available: true } }).level).toBe(WARN)
+		expect(assess({ updates: { appscount: 0, available: true } }).items).toHaveLength(0)
+	})
+
+	it('does not treat stubbed app-update listing zeros as pending updates', () => {
+		expect(assess({ updates: { appscount: 0, available: false } }).items).toHaveLength(0)
+	})
+})
+
+describe('assess — SMART age copy', () => {
+	it('mentions SMART still PASS when age threshold fires on a passing drive', () => {
+		const result = assess({
+			smart: { disks: [{ device: '/dev/sda', health: 'PASS', power_on_hours: 50000 }] },
+		})
+		expect(find(result, 'SMART still PASS')).toBeTruthy()
 	})
 })
 

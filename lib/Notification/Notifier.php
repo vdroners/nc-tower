@@ -88,8 +88,11 @@ class Notifier implements INotifier {
                     ->setParsedMessage($message);
 
 				$action = $notification->createAction();
+				$towerUrl = $this->url->linkToRouteAbsolute('nc_tower.page.index');
 				$action->setParsedLabel($l->t('Read more'))
+					->setLink($towerUrl, 'WEB')
 					->setPrimary(true);
+				$notification->setLink($towerUrl);
 				$notification->addParsedAction($action);
 
 				return $notification;

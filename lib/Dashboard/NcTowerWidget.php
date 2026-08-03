@@ -87,7 +87,7 @@ public function getIconClass(): string {
  * @inheritDoc
  */
 public function getUrl(): ?string {
-  return null;
+  return $this->url->linkToRouteAbsolute('nc_tower.page.index');
 }
 
     public function load(): void

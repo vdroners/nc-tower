@@ -18,7 +18,7 @@ Fork of [Admin Cockpit](https://github.com/zomtec2311/admincockpit) by Wolfgang 
 The Nextcloud app itself does not require the sidecar. The sidecar is an **optional privileged host agent** (Docker socket + allowlisted host tools). Administrators configure its URL and token; stock defaults use Docker DNS (`http://nc_tower_sidecar:18765`) and do not embed lab IPs. See [docs/PRIVACY.md](https://github.com/vdroners/nc-tower/blob/main/docs/PRIVACY.md).
 
 See CREDITS.md for attribution.]]></description>
-<version>1.12.1</version>
+<version>1.12.2</version>
 <licence>agpl</licence>
 <author mail="wtoedt@gmail.com" homepage="https://github.com/zomtec2311/admincockpit">Wolfgang Tödt</author>
 <author mail="dan@19labs.com" homepage="https://github.com/vdroners/nc-tower">Sarge</author>

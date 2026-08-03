@@ -1,7 +1,7 @@
 <template>
 	<div class="nc-tower-view">
 		<h2>Apps</h2>
-		<p class="nc-tower-view__lead">Enable, disable and update Nextcloud apps installed on this server.</p>
+		<p class="nc-tower-view__lead">Enable and disable Nextcloud apps installed on this server. Store updates live in Nextcloud Apps.</p>
 
 		<Section id="apps.updates"
 			title="Updates"
@@ -11,7 +11,11 @@
 			:error="errors.updates"
 			default-open
 			@refresh="refresh('updates')">
-			<DataTable :columns="updateColumns" :rows="updates.apps || []" row-key="id" empty-text="All apps up to date">
+			<NcNoteCard v-if="updates.available === false" type="info">
+				{{ updates.message || 'App update listing is not available here.' }}
+				Use <strong>Settings → Apps</strong> for store updates.
+			</NcNoteCard>
+			<DataTable :columns="updateColumns" :rows="updates.apps || []" row-key="id" empty-text="Update listing unavailable — use Nextcloud Apps">
 				<template #cell-name="{ row }">
 					<span class="nc-tower-app"><img v-if="row.icon" :src="row.icon" alt="" class="nc-tower-app__icon">{{ appLabel(row) }}</span>
 				</template>
@@ -95,6 +99,7 @@
 <script>
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
+import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
 import NcTextField from '@nextcloud/vue/dist/Components/NcTextField.js'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DataTable from '../components/DataTable.vue'
@@ -104,7 +109,7 @@ import Poller from '../services/poll.js'
 
 export default {
 	name: 'Apps',
-	components: { ConfirmDialog, DataTable, Section, NcButton, NcTextField },
+	components: { ConfirmDialog, DataTable, Section, NcButton, NcNoteCard, NcTextField },
 	data() {
 		return {
 			info: {},
@@ -131,11 +136,11 @@ export default {
 	},
 	computed: {
 		updateSummary() {
-			if (this.updates.available === false && this.updates.message) {
-				return this.updates.message
+			if (this.updates.available === false) {
+				return this.updates.message || 'listing unavailable — use Nextcloud Apps'
 			}
 			const count = (this.updates.apps || []).length
-			return count ? `${count} update(s) available` : 'up to date — use Nextcloud Apps for store updates'
+			return count ? `${count} update(s) available` : 'no pending updates listed'
 		},
 	},
 	created() {
@@ -167,9 +172,8 @@ export default {
 			}
 		},
 		/**
-		 * appsfull() stores the whole appinfo array under `name`, so the display
-		 * name is one level down — and null appinfo falls back to a stdClass
-		 * whose name is the app id.
+		 * Prefer flattened string `name` from appsfull(); keep a defensive
+		 * nested-object walk for any stale payload still in flight.
 		 *
 		 * @param {object} row app row
 		 * @return {string} display label
@@ -189,6 +193,18 @@ export default {
 				}
 			}
 			return row?.appid || row?.id || ''
+		},
+		/**
+		 * @param {object|string|boolean} result mutator response
+		 * @param {string} fallback error when ok is false
+		 */
+		assertOk(result, fallback) {
+			if (result === false || result === 'false') {
+				throw new Error(fallback)
+			}
+			if (result && typeof result === 'object' && result.ok === false) {
+				throw new Error(result.error || fallback)
+			}
 		},
 		filtered(rows) {
 			const list = rows || []
@@ -220,7 +236,8 @@ export default {
 		async toggle(action, appid) {
 			this.busy = appid
 			try {
-				await get(`/${action}app/${encodeURIComponent(appid)}`)
+				const result = await get(`/${action}app/${encodeURIComponent(appid)}`)
+				this.assertOk(result, `Could not ${action} ${appid}`)
 				showSuccess(`${appid} ${action}d`)
 			} catch (error) {
 				showError(error.message)
@@ -233,9 +250,9 @@ export default {
 			this.busy = row.id
 			try {
 				await get(`/updateapp/${encodeURIComponent(row.id)}`)
-				showSuccess(`${row.id} updated`)
+				showError('In-app updates are not available — use Nextcloud Apps')
 			} catch (error) {
-				showError(error.message)
+				showError(error.message || 'In-app updates are not available — use Nextcloud Apps')
 			} finally {
 				this.busy = ''
 				await this.poller.refresh('updates')

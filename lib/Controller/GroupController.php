@@ -80,37 +80,35 @@ class GroupController extends Controller {
 
     
     
-    public function addgroup($who) {
+    public function addgroup($who): DataResponse {
         try {
-            if ($this->groupManager->groupExists($who)) { return 'false'; }
-            else { 
-                $this->groupManager->createGroup($who);
-                return 'true';
+            if ($this->groupManager->groupExists($who)) {
+                return new DataResponse(['ok' => false, 'gid' => $who, 'error' => 'group exists'], 409);
             }
+            $this->groupManager->createGroup($who);
+            return new DataResponse(['ok' => true, 'gid' => $who]);
         } catch (\Throwable $e) {
             $this->logger->error(
                 'NcTower: FATAL ERROR or EXCEPTION in DataController->addgroup: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
                 ['app' => 'nc_tower']
             );
-            return 'false';
+            return new DataResponse(['ok' => false, 'gid' => $who, 'error' => $e->getMessage()], 500);
         }
     }
     
-    public function deletegroup($who) {
+    public function deletegroup($who): DataResponse {
         try {
             if ($this->groupManager->groupExists($who)) { 
                 $this->myService->deletegroup($who);
-                return 'true';                
+                return new DataResponse(['ok' => true, 'gid' => $who]);
             }
-            else { 
-                return 'false';
-            }
+            return new DataResponse(['ok' => false, 'gid' => $who, 'error' => 'group not found'], 404);
         } catch (\Throwable $e) {
             $this->logger->error(
                 'NcTower: FATAL ERROR or EXCEPTION in DataController->deletegroup: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
                 ['app' => 'nc_tower']
             );
-            return 'false';
+            return new DataResponse(['ok' => false, 'gid' => $who, 'error' => $e->getMessage()], 500);
         }
     }
   

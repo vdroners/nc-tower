@@ -235,25 +235,23 @@ class UserController extends Controller {
 		return $used === null ? '—' : $this->myService->formatBytes($used);
 	}
     
-    public function deleteuser($who) {
+    public function deleteuser($who): DataResponse {
         try {
             if ($this->userManager->userExists($who)) { 
                  $user = $this->userManager->get($who);
                  if ($user->delete()) {
                      $this->logger->info("NcTower: User $who successful deleted");
-                     return 'true';
+                     return new DataResponse(['ok' => true, 'uid' => $who]);
                 }
-                 else { return 'false'; }               
+                 return new DataResponse(['ok' => false, 'uid' => $who, 'error' => 'delete failed'], 400);
             }
-            else { 
-                return 'false';
-            }
+            return new DataResponse(['ok' => false, 'uid' => $who, 'error' => 'user not found'], 404);
         } catch (\Throwable $e) {
             $this->logger->error(
-                'NcTower: FATAL ERROR or EXCEPTION in DataController->deletegroup: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+                'NcTower: FATAL ERROR or EXCEPTION in DataController->deleteuser: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
                 ['app' => 'nc_tower']
             );
-            return 'false';
+            return new DataResponse(['ok' => false, 'uid' => $who, 'error' => $e->getMessage()], 500);
         }
     }
     
@@ -263,6 +261,7 @@ class UserController extends Controller {
             $mids = $user->getManagerUids();
             if($mids) $mids = $mids[0];
             else $mids = "";
+            $status = $user->getLastLogin() ? false : true;
             $userList = [];
                 $userList[] = [
                     'uid' => $who,
@@ -277,7 +276,7 @@ class UserController extends Controller {
                     'firstlogin' => $user->getFirstLogin(),
                     'used' => $this->quotaUsedLabel($user),
                     'used_bytes' => $this->storageUsedMap()[$user->getUID()] ?? 0,
-                    'status' => true,
+                    'status' => $status,
                 ];
             
             return new DataResponse([
@@ -305,8 +304,11 @@ class UserController extends Controller {
         
         if ($user->getDisplayName() <> $displayname) $user->setDisplayName($displayname);
         if ($password) {
-            if($user->setPassword($password, null)) $this->logger->error('NcTower: Success in DataController->setPassword: ');
-            else $this->logger->error('NcTower: Fail in DataController->setPassword: ');
+            if ($user->setPassword($password, null)) {
+                $this->logger->info('NcTower: password updated for ' . $uid);
+            } else {
+                $this->logger->warning('NcTower: password update failed for ' . $uid);
+            }
         }
         if ($user->getEMailAddress() <> $email) $user->setEMailAddress($email);
         if ($oldgroups <> $groups) {
@@ -338,9 +340,9 @@ class UserController extends Controller {
             $user->setManagerUids($usrmid);
         }
         return new JSONResponse([
+         'ok' => true,
          'uid' => $uid,
          'displayname' => $displayname,
-         'password' => $password,
         'email' => $email,
         'groups' => $groups,
         'admingroups' => $admingroups,
@@ -348,25 +350,13 @@ class UserController extends Controller {
         'managerids' => $managerids,
         'status' => true,
 		   ]);
-        
-        try {
-            if ($this->groupManager->groupExists($who)) { return 'false'; }
-            else { 
-                $this->groupManager->createGroup($who);
-                return 'true';
-            }
-        } catch (\Throwable $e) {
-            $this->logger->error(
-                'NcTower: FATAL ERROR or EXCEPTION in DataController->addgroup: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'nc_tower']
-            );
-            return 'false';
-        }
     }
     
-    public function userexists($who) {
-            if($this->userManager->get($who)) return true;
-            else return false;
+    public function userexists($who): DataResponse {
+            return new DataResponse([
+                'exists' => $this->userManager->get($who) !== null,
+                'uid' => $who,
+            ]);
     }
     
     public function newuser($uid, $displayname, $password, $email, $groups, $admingroups, $quota, $managerids): DataResponse {
@@ -404,7 +394,7 @@ class UserController extends Controller {
         return;
     }
     
-    public function notifyuser() {
+    public function notifyuser(): DataResponse {
 $rawData = file_get_contents('php://input');
 
 $data = json_decode($rawData, true);
@@ -425,15 +415,13 @@ if (json_last_error() === JSON_ERROR_NONE) {
             ->setSubject('abc', $para) // $subject and $parameters
         ;
         $nmanager->notify($notification);
-        return 'true';
-        } else {
-    http_response_code(400);
-    echo json_encode(['status' => 'error', 'message' => 'Invalid JSON']);
-}
+        return new DataResponse(['ok' => true, 'who' => $who]);
+        }
+    return new DataResponse(['ok' => false, 'error' => 'Invalid JSON'], 400);
         
     }
     
-    public function notifygroup() {
+    public function notifygroup(): DataResponse {
 $rawData = file_get_contents('php://input');
 
 $data = json_decode($rawData, true);
@@ -445,8 +433,10 @@ if (json_last_error() === JSON_ERROR_NONE) {
             'von' => $this->userSession->getUser()->getUID(),
         ];
         $group = $this->groupManager->get($who);
+        if ($group === null) {
+            return new DataResponse(['ok' => false, 'error' => 'group not found', 'who' => $who], 404);
+        }
         $groupusers = $group->getUsers();
-        //return 'true';
         $nmanager = \OCP\Server::get(\OCP\Notification\IManager::class);
         foreach ($groupusers as $groupuser) {
             $notification = $nmanager->createNotification();
@@ -457,16 +447,11 @@ if (json_last_error() === JSON_ERROR_NONE) {
             ->setSubject('abc', $para) // $subject and $parameters
         ;
         $nmanager->notify($notification);
-        $notification = $nmanager->createNotification();
         }
-        
 
-        
-        return 'true';
-        } else {
-    http_response_code(400);
-    echo json_encode(['status' => 'error', 'message' => 'Invalid JSON']);
-}
+        return new DataResponse(['ok' => true, 'who' => $who]);
+        }
+    return new DataResponse(['ok' => false, 'error' => 'Invalid JSON'], 400);
         
     }
   

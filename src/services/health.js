@@ -111,8 +111,11 @@ export function assess(data) {
 		// Only meaningful since 1.8.2 — the old parser reported the next
 		// attribute row's ID, so /dev/sda read as 10 h against 60404 h.
 		const age = overThreshold(disk.power_on_hours, HOURS_5Y, HOURS_7Y)
+		const ageDetail = disk.health === 'PASS'
+			? `${disk.power_on_hours} hours — past age threshold (SMART still PASS)`
+			: `${disk.power_on_hours} hours — past nominal service life`
 		add(age, `${disk.device} ${Math.round((disk.power_on_hours || 0) / 8760 * 10) / 10} years powered on`,
-			`${disk.power_on_hours} hours — past nominal service life`, 'smart')
+			ageDetail, 'smart')
 		add(overThreshold(disk.temp_c, 55, 65), `${disk.device} ${disk.temp_c}°C`, 'drive running hot', 'smart')
 	}
 
@@ -126,16 +129,27 @@ export function assess(data) {
 		add(overThreshold(gpu.temp_c, 80, 90), `${gpu.name} ${gpu.temp_c}°C`, 'GPU running hot', 'gpu')
 	}
 
-	const critical = data.inbox?.critical_recent || []
+	const recent = data.inbox?.inbox_recent || []
+	const critical = data.inbox?.critical_recent
+		|| recent.filter((row) => ['crit', 'critical'].includes(String(row.status || '').toLowerCase()))
+	const warns = recent.filter((row) => String(row.status || '').toLowerCase() === 'warn')
 	if (critical.length) {
 		add(CRIT, `${critical.length} critical ops alert${critical.length > 1 ? 's' : ''}`,
 			critical.map((row) => row.monitor || row.name).join(', '), 'inbox')
+	}
+	if (warns.length) {
+		add(WARN, `${warns.length} ops warning${warns.length > 1 ? 's' : ''}`,
+			warns.map((row) => row.monitor || row.name).slice(0, 8).join(', '), 'inbox')
 	}
 	const backup = data.inbox?.backup
 	if (backup && backup.stale) {
 		add(WARN, 'Backup is stale', `${backup.name || 'no backup file'} — older than 26 h`, 'backup')
 	} else if (backup && backup.ok === false) {
-		add(WARN, 'Last backup not OK', backup.summary || backup.status || '', 'backup')
+		const summary = backup.summary || backup.status || ''
+		const title = /timescaledb/i.test(summary)
+			? 'TimescaleDB backup failed'
+			: (summary || 'Backup check not OK')
+		add(WARN, title, summary && summary !== title ? summary : (backup.name || backup.status || ''), 'backup')
 	}
 
 	const updates = (data.packages?.packages || []).length
@@ -146,7 +160,7 @@ export function assess(data) {
 
 	// Nextcloud's own health — otherwise only visible by opening System or Apps.
 	const system = data.system || {}
-	if (system.nc_updateAvailable) {
+	if (system.nc_updateCheckAvailable !== false && system.nc_updateAvailable) {
 		add(WARN, `Nextcloud ${system.nc_updateVersion || 'update'} available`,
 			`running ${system.nc_currentVersionimplode || system.nc_version || '?'}`, 'system')
 	}
@@ -155,7 +169,7 @@ export function assess(data) {
 		`nextcloud.log is ${system.nc_logfile_size}`,
 		'rotate or truncate the Nextcloud log', 'system')
 
-	const appUpdates = data.updates?.appscount || 0
+	const appUpdates = data.updates?.available === false ? 0 : (data.updates?.appscount || 0)
 	if (appUpdates) {
 		add(WARN, `${appUpdates} app update${appUpdates > 1 ? 's' : ''} available`,
 			'Nextcloud apps have updates pending', 'apps')

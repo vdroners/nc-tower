@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.12.2] - 2026-08-03
+
+### Fixed
+- Honest Apps/Home/System stub UX for App Store update listing and NC core
+  update check (`updateCheckAvailable`); no more fake “0 updates”
+- Flatten `appsfull` display names; enable/disable return JSON `{ok}`
+- Users/Groups mutators return JSON `{ok}`; stop echoing passwords; UI checks `ok`
+- Home/Ops attention counts warn+crit inbox rows; TimescaleDB backup title
+- Tools empty-state + “no probe configured” (no perpetual checking…)
+- Ops Trend column wires Sparkline; dashboard widget URL + notifier link
+- Disk age attention copy notes SMART still PASS when health is PASS
+
+### Ops (host, not in git)
+- `/media/4TB/ops/bin/webmin/backup-enhanced.sh` uses TimescaleDB `gcs` role,
+  rejects empty dumps, clears stale backup warn markers on success
+
 ## [1.12.1] - 2026-08-03
 
 ### Changed

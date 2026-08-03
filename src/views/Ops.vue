@@ -33,6 +33,10 @@
 				<template #cell-status="{ row }">
 					<span class="nc-tower-state" :class="`nc-tower-state--${row.status}`">{{ row.status }}</span>
 				</template>
+				<template #cell-cpu="{ row }">{{ row.cpu || '—' }}</template>
+				<template #cell-trend="{ row }">
+					<Sparkline :samples="trends[row.name] || []" :label="`${row.name} CPU`" :max="100" />
+				</template>
 				<template #cell-ports="{ row }">{{ fmt.ports(row.ports) }}</template>
 				<template #cell-actions="{ row }">
 					<div class="nc-tower-actions-cell">
@@ -777,12 +781,6 @@ export default {
 		 */
 		refresh(name) {
 			return this.poller.refresh(name)
-		},
-		cpuShare(row) {
-			// Share of the busiest container, so the bars compare against each
-			// other rather than against an abstract 100%.
-			const peak = Math.max(...(this.containers.containers || []).map((c) => c.cpu_pct || 0), 1)
-			return ((row.cpu_pct || 0) / peak) * 100
 		},
 		recordTrends(rows) {
 			const next = { ...this.trends }

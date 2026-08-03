@@ -8,8 +8,11 @@
 
 		<NcNoteCard v-if="error" type="error">{{ error }}</NcNoteCard>
 		<NcLoadingIcon v-else-if="loading" :size="32" />
+		<NcNoteCard v-else-if="!hasConfiguredTools" type="info">
+			No tool URLs configured. Set them in <strong>Settings → NC Tower</strong>.
+		</NcNoteCard>
 
-		<div class="nc-tower-chips">
+		<div v-if="!loading" class="nc-tower-chips">
 			<span class="nc-tower-chip">{{ counts.up }} reachable</span>
 			<span class="nc-tower-chip">{{ counts.down }} down</span>
 			<span class="nc-tower-chip">{{ counts.superseded }} superseded by Tower</span>
@@ -89,9 +92,13 @@ export default {
 	name: 'Tools',
 	components: { NcLoadingIcon, NcNoteCard, NcTowerIcon, SeverityDot },
 	data() {
-		return { tools: {}, probes: {}, loading: true, error: '' }
+		return { tools: {}, probes: {}, probesLoaded: false, loading: true, error: '' }
 	},
 	computed: {
+		hasConfiguredTools() {
+			const flat = (this.tools.groups || []).flatMap((group) => group.tools || [])
+			return flat.some((tool) => tool.url)
+		},
 		groups() {
 			const flat = (this.tools.groups || []).flatMap((group) => group.tools || [])
 			const urlOf = (title) => (flat.find((tool) => tool.title === title) || {}).url || ''
@@ -157,7 +164,10 @@ export default {
 					? `up · HTTP ${row.probe.http} · ${row.probe.ms} ms`
 					: `down · ${row.probe.detail || 'no answer'}`
 			}
-			return row.url ? 'checking…' : ''
+			if (row.url) {
+				return this.probesLoaded ? 'no probe configured' : 'checking…'
+			}
+			return ''
 		},
 		async load() {
 			try {
@@ -167,6 +177,7 @@ export default {
 				])
 				this.tools = tools
 				this.probes = Object.fromEntries((services.services || []).map((row) => [row.name, row]))
+				this.probesLoaded = true
 				this.error = ''
 			} catch (error) {
 				this.error = error.message

@@ -167,14 +167,7 @@ class AppsController extends Controller {
 
 			$wtarr[$i]['appid'] = $appid;
 			$appinfo = $this->appManager->getAppInfo($appid, false, 'en_GB');
-			if ($appinfo === null) {
-				$obja = new \stdClass();
-				$obja->appid = $appid;
-				$obja->id = $i;
-				$obja->name = $appid;
-				$appinfo = $obja;
-			}
-			$wtarr[$i]['name'] = $appinfo;
+			$wtarr[$i]['name'] = $this->appDisplayName($appid, $appinfo);
 			$wtarr[$i]['id'] = $i;
 			$wtarr[$i]['icon'] = $icon ? $icon : $this->appManager->getAppWebPath('nc_tower') . '/img/dummy.svg';
 
@@ -186,25 +179,66 @@ class AppsController extends Controller {
 		return $wtarr;
 	}
 
-	public function disableapp($who) {
+	/**
+	 * Flatten appinfo name (string or locale map) to a single display string.
+	 *
+	 * @param string $appid app id fallback
+	 * @param array|null $appinfo OCP appinfo or null
+	 */
+	private function appDisplayName(string $appid, ?array $appinfo): string {
+		if ($appinfo === null) {
+			return $appid;
+		}
+		$name = $appinfo['name'] ?? $appid;
+		if (is_string($name) && $name !== '') {
+			return $name;
+		}
+		if (is_array($name) && $name !== []) {
+			$first = reset($name);
+			return is_string($first) && $first !== '' ? $first : $appid;
+		}
+		return $appid;
+	}
+
+	public function disableapp($who): DataResponse {
 		try {
 			if ($this->appManager->isInstalled($who)) {
 				$this->appManager->disableApp($who, false);
-				return 'true';
+				return new DataResponse(['ok' => true, 'appid' => $who]);
 			}
-			return 'false';
+			return new DataResponse([
+				'ok' => false,
+				'appid' => $who,
+				'error' => 'app not installed',
+			], Http::STATUS_BAD_REQUEST);
 		} catch (\Throwable $e) {
 			$this->logger->error(
 				'NcTower: FATAL ERROR or EXCEPTION in AppsController->disableapp: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
 				['app' => 'nc_tower']
 			);
-			return 'false';
+			return new DataResponse([
+				'ok' => false,
+				'appid' => $who,
+				'error' => $e->getMessage(),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
 
-	public function enableapp($who) {
-		$this->appManager->enableApp($who, false);
-		return 'true';
+	public function enableapp($who): DataResponse {
+		try {
+			$this->appManager->enableApp($who, false);
+			return new DataResponse(['ok' => true, 'appid' => $who]);
+		} catch (\Throwable $e) {
+			$this->logger->error(
+				'NcTower: FATAL ERROR or EXCEPTION in AppsController->enableapp: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+				['app' => 'nc_tower']
+			);
+			return new DataResponse([
+				'ok' => false,
+				'appid' => $who,
+				'error' => $e->getMessage(),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
 	}
 
 	/**

@@ -94,6 +94,24 @@ export default {
 			}
 			return out
 		},
+		opsAlertCount() {
+			const recent = this.inbox.inbox_recent || []
+			const counted = recent.filter((row) => {
+				const status = String(row.status || '').toLowerCase()
+				return status === 'warn' || status === 'crit' || status === 'critical'
+			}).length
+			if (counted) {
+				return counted
+			}
+			return (this.inbox.critical_recent || []).length
+		},
+		opsAlertNote() {
+			const crit = (this.inbox.critical_recent || []).length
+			if (crit) {
+				return `${crit} critical`
+			}
+			return 'warn + critical'
+		},
 		timelineBuckets() {
 			// One bucket per hour for the last 24, so a quiet night reads as a
 			// flat line rather than as missing data.
@@ -164,15 +182,17 @@ export default {
 				{
 					id: 'apps',
 					label: 'App updates',
-					value: this.updates.appscount != null ? String(this.updates.appscount) : '—',
-					note: 'available',
+					value: this.updates.available === false
+						? '—'
+						: (this.updates.appscount != null ? String(this.updates.appscount) : '—'),
+					note: this.updates.available === false ? 'check NC Apps' : 'available',
 					route: 'apps',
 				},
 				{
 					id: 'inbox',
 					label: 'Ops alerts',
-					value: String((this.inbox.critical_recent || []).length),
-					note: 'critical',
+					value: String(this.opsAlertCount),
+					note: this.opsAlertNote,
 					route: 'ops',
 				},
 			]

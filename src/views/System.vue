@@ -19,7 +19,10 @@
 					<dd :key="`${fact.label}-v`">{{ fact.value || '—' }}</dd>
 				</template>
 			</dl>
-			<NcNoteCard v-if="info.nc_updateAvailable" type="warning">
+			<NcNoteCard v-if="info.nc_updateCheckAvailable === false" type="info">
+				Core update check is not available via public APIs; use <strong>Settings → Overview</strong>.
+			</NcNoteCard>
+			<NcNoteCard v-else-if="info.nc_updateAvailable" type="warning">
 				Nextcloud {{ info.nc_updateVersion }} is available (running {{ info.nc_currentVersionimplode || info.nc_version }}).
 			</NcNoteCard>
 		</Section>

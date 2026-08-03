@@ -265,7 +265,7 @@ export default {
 		async submitEdit() {
 			this.edit.busy = true
 			try {
-				await post('/saveuser', {
+				const result = await post('/saveuser', {
 					uid: this.edit.uid,
 					displayname: this.edit.displayname,
 					// Empty password means "keep the current one" — saveuser skips it.
@@ -276,6 +276,7 @@ export default {
 					quota: this.edit.quota,
 					managerids: this.edit.managerids,
 				})
+				this.assertOk(result, `Could not save ${this.edit.uid}`)
 				showSuccess(`Saved ${this.edit.uid}`)
 				this.edit.open = false
 			} catch (error) {
@@ -346,9 +347,22 @@ export default {
 				await action()
 			}
 		},
+		/**
+		 * @param {object|string|boolean} result mutator response
+		 * @param {string} fallback error when ok is false
+		 */
+		assertOk(result, fallback) {
+			if (result === false || result === 'false') {
+				throw new Error(fallback)
+			}
+			if (result && typeof result === 'object' && result.ok === false) {
+				throw new Error(result.error || fallback)
+			}
+		},
 		async remove(uid) {
 			try {
-				await get(`/deleteuser/${encodeURIComponent(uid)}`)
+				const result = await get(`/deleteuser/${encodeURIComponent(uid)}`)
+				this.assertOk(result, `Could not delete ${uid}`)
 				showSuccess(`Deleted ${uid}`)
 			} catch (error) {
 				showError(error.message)
@@ -358,7 +372,8 @@ export default {
 		},
 		async addGroup() {
 			try {
-				await get(`/addgroup/${encodeURIComponent(this.newGroup.trim())}`)
+				const result = await get(`/addgroup/${encodeURIComponent(this.newGroup.trim())}`)
+				this.assertOk(result, `Could not add ${this.newGroup.trim()}`)
 				showSuccess(`Added ${this.newGroup.trim()}`)
 				this.newGroup = ''
 			} catch (error) {
@@ -369,7 +384,8 @@ export default {
 		},
 		async removeGroup(gid) {
 			try {
-				await get(`/deletegroup/${encodeURIComponent(gid)}`)
+				const result = await get(`/deletegroup/${encodeURIComponent(gid)}`)
+				this.assertOk(result, `Could not delete ${gid}`)
 				showSuccess(`Deleted ${gid}`)
 			} catch (error) {
 				showError(error.message)
@@ -382,10 +398,11 @@ export default {
 		},
 		async sendNotify() {
 			try {
-				await post(this.notify.group ? '/notifygroup' : '/notifyuser', {
+				const result = await post(this.notify.group ? '/notifygroup' : '/notifyuser', {
 					who: this.notify.who,
 					what: this.notify.message,
 				})
+				this.assertOk(result, 'Could not send notification')
 				showSuccess('Notification sent')
 				this.notify.open = false
 			} catch (error) {

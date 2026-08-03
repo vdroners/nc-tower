@@ -252,6 +252,7 @@ class SystemController extends Controller {
                 'nc_installation_type' => $this->detectEnvironment(),
                 'nc_datadirectory' => $ncinfo['datadirectory'],
                 'nc_updateAvailable' => $ncupdate['updateAvailable'],
+                'nc_updateCheckAvailable' => $ncupdate['updateCheckAvailable'] ?? false,
                 'nc_currentVersion' => $ncupdate['currentVersion'],
                 'nc_updateVersion' => $ncupdate['updateVersion'],
                 'nc_currentVersionimplode' => $ncupdate['currentVersionimplode'],
@@ -286,6 +287,7 @@ class SystemController extends Controller {
                 'nc_installation_type' => $this->detectEnvironment(),
                 'nc_datadirectory' => $ncinfo['datadirectory'],
                 'nc_updateAvailable' => $ncupdate['updateAvailable'],
+                'nc_updateCheckAvailable' => $ncupdate['updateCheckAvailable'] ?? false,
                 'nc_currentVersion' => $ncupdate['currentVersion'],
                 'nc_updateVersion' => $ncupdate['updateVersion'],
                 'nc_currentVersionimplode' => $ncupdate['currentVersionimplode'],
@@ -313,6 +315,7 @@ class SystemController extends Controller {
 		$currentVersionimplode = implode('.', $currentVersion);
         return [
                 'updateAvailable' => false,
+                'updateCheckAvailable' => false,
                 'updateVersion' => '',
                 'currentVersion' => $currentVersion,
                 'currentVersionimplode' => $currentVersionimplode,
