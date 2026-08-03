@@ -43,7 +43,7 @@ class Application extends App implements IBootstrap {
 				'order' => 1000,
 				'href' => $urlGenerator->linkToRoute(self::APP_ID . '.page.index'),
 				'icon' => $urlGenerator->imagePath(self::APP_ID, 'app.svg'),
-				'name' => 'Control Tower',
+				'name' => 'NC Tower',
 			];
 		});
 	}

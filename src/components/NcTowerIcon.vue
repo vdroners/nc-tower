@@ -16,11 +16,11 @@
 
 <script>
 /**
- * Tabler-style inline SVG glyphs for Control Tower (stroke, 24 viewBox).
+ * Tabler-style inline SVG glyphs for NC Tower (stroke, 24 viewBox).
  *
  * Matches the estate convention set by GcsIcon.vue and NcPrintIcon.vue: no icon
  * library anywhere, one registry per app, stroke="currentColor" so icons take
- * the colour of whatever they sit in. Control Tower previously used Unicode
+ * the colour of whatever they sit in. NC Tower previously used Unicode
  * glyphs (◎ ▾ ▸ ↻ ▲ ▼), which ignore stroke weight and render differently on
  * every platform font.
  */

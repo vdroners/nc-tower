@@ -11,7 +11,7 @@ use OCP\IConfig;
  * Admin-configurable deep links + sidecar base URL.
  *
  * Tool URL defaults are empty so a stock App Store install shows no lab tiles
- * until an admin fills them in Settings → Control Tower.
+ * until an admin fills them in Settings → NC Tower.
  */
 class EndpointConfigService {
 	public const KEY_SIDECAR_URL = 'sidecar_url';
@@ -124,7 +124,7 @@ class EndpointConfigService {
 			'tools' => [[
 				'title' => 'WireGuard',
 				'url' => '',
-				'note' => 'Use the Nextcloud WireGuard app (not managed in Control Tower).',
+				'note' => 'Use the Nextcloud WireGuard app (not managed in NC Tower).',
 			]],
 		];
 

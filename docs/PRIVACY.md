@@ -1,6 +1,6 @@
-# Control Tower — privacy / sidecar disclosure
+# NC Tower — privacy / sidecar disclosure
 
-Control Tower (`nc_tower`) is a Nextcloud admin app. By itself it only uses
+NC Tower (`nc_tower`) is a Nextcloud admin app. By itself it only uses
 Nextcloud session credentials and public OCP APIs (user/group/app enablement,
 system info that PHP can read inside the Nextcloud container).
 
@@ -13,7 +13,7 @@ Host health, Docker day-ops, SMART/GPU, and package updates require a separate
   that talk only to Nextcloud.
 - **Privileged when deployed** (Docker socket, host PID namespace, allowlisted
   host commands). The shared token is host-root equivalent.
-- Configured by the administrator (`sidecar_url` in Settings → Control Tower,
+- Configured by the administrator (`sidecar_url` in Settings → NC Tower,
   token in Nextcloud `config.php` / sidecar `.env`). Defaults do not point at
   any vendor lab IP.
 

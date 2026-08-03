@@ -4,7 +4,7 @@ import App from './App.vue'
 Vue.config.productionTip = false
 
 /**
- * Every Control Tower page renders <div id="nc_tower" data-page="…">. The
+ * Every NC Tower page renders <div id="nc_tower" data-page="…">. The
  * bundle is shared, so which view boots is decided by that attribute.
  */
 function boot() {

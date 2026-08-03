@@ -6,7 +6,7 @@ $sidecarUrl = htmlspecialchars((string)($_['sidecar_url'] ?? ''), ENT_QUOTES, 'U
 $toolDefs = $_['tool_defs'] ?? [];
 ?>
 <div id="nc-tower-admin-settings" class="section" data-save-url="<?php echo $saveUrl; ?>">
-	<h2>Control Tower</h2>
+	<h2>NC Tower</h2>
 	<p class="settings-hint">
 		Configure the optional host sidecar URL and deep-link tiles for external consoles.
 		Leave tool URLs empty to hide those tiles. Defaults ship empty so a stock install

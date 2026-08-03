@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Control Tower host agent.
+"""NC Tower host agent.
 
 The service intentionally uses only the Python standard library and the
 Docker CLI. Read/write operations are constrained by environment-configured

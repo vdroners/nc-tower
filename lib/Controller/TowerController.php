@@ -13,7 +13,7 @@ use OCP\IRequest;
 use Psr\Log\LoggerInterface;
 
 /**
- * Proxies Control Tower sidecar (RO + allowlisted mutators).
+ * Proxies NC Tower sidecar (RO + allowlisted mutators).
  * Docker engine access is only via the sidecar HTTP API.
  */
 class TowerController extends Controller {
@@ -71,7 +71,7 @@ class TowerController extends Controller {
 		curl_close($ch);
 
 		if ($respBody === false || $code < 200 || $code >= 300) {
-			$this->logger->warning('Control Tower sidecar error', [
+			$this->logger->warning('NC Tower sidecar error', [
 				'url' => $url,
 				'http' => $code,
 				'err' => $err,

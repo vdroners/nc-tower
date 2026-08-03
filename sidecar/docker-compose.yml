@@ -1,4 +1,4 @@
-# Generic Control Tower sidecar — no lab paths or IPs.
+# Generic NC Tower sidecar — no lab paths or IPs.
 # Copy sidecar/.env.example → .env and set mounts / allowlists for your host.
 #
 # Lab (GCS) overlay: docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d

@@ -2,9 +2,9 @@
 <info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	  xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
 	<id>nc_tower</id>
-	<name>Control Tower</name>
+	<name>NC Tower</name>
 	<summary>Nextcloud orchestrator for admin, stacks, host health, and ops inbox</summary>
-	<description><![CDATA[**Control Tower** is a Nextcloud admin orchestrator — users, apps, system info, and an optional host sidecar for Docker/day-ops.
+	<description><![CDATA[**NC Tower** is a Nextcloud admin orchestrator — users, apps, system info, and an optional host sidecar for Docker/day-ops.
 
 Fork of [Admin Cockpit](https://github.com/zomtec2311/admincockpit) by Wolfgang Tödt (AGPL-3.0), rebranded and extended.
 
@@ -18,7 +18,7 @@ Fork of [Admin Cockpit](https://github.com/zomtec2311/admincockpit) by Wolfgang 
 The Nextcloud app itself does not require the sidecar. The sidecar is an **optional privileged host agent** (Docker socket + allowlisted host tools). Administrators configure its URL and token; stock defaults use Docker DNS (`http://nc_tower_sidecar:18765`) and do not embed lab IPs. See [docs/PRIVACY.md](https://github.com/vdroners/nc-tower/blob/main/docs/PRIVACY.md).
 
 See CREDITS.md for attribution.]]></description>
-	<version>1.12.0</version>
+	<version>1.12.1</version>
 	<licence>agpl</licence>
 	<author mail="wtoedt@gmail.com" homepage="https://github.com/zomtec2311/admincockpit">Wolfgang Tödt</author>
 	<author mail="dan@19labs.com" homepage="https://github.com/vdroners/nc-tower">Sarge</author>
@@ -40,7 +40,7 @@ See CREDITS.md for attribution.]]></description>
 	<navigations>
 		<navigation>
 			<id>nc_tower</id>
-			<name>Control Tower</name>
+			<name>NC Tower</name>
 			<route>nc_tower.page.index</route>
 			<icon>app.svg</icon>
 			<type>link</type>

@@ -2,7 +2,7 @@
 	<div class="nc-tower-view">
 		<h2>Services</h2>
 		<p class="nc-tower-view__lead">
-			Every external console this host runs, and how much of it Control Tower has taken
+			Every external console this host runs, and how much of it NC Tower has taken
 			over. Anything marked superseded is here for reference — the work is done in Tower.
 		</p>
 
@@ -57,7 +57,7 @@ import Poller from '../services/poll.js'
 
 /**
  * The old page was a flat grid of equal-looking links, which hid two things:
- * which consoles Control Tower had already replaced, and whether any of them
+ * which consoles NC Tower had already replaced, and whether any of them
  * were even up. OrcaSlicer was down and the page gave no hint.
  *
  * Probe rule: any HTTP answer counts as reachable. Guacamole and MediaMTX both
@@ -101,7 +101,7 @@ export default {
 
 			return [
 				{
-					title: 'Absorbed into Control Tower',
+					title: 'Absorbed into NC Tower',
 					blurb: 'Tower does these now. The links remain only as a second opinion.',
 					rows: filterConfigured(ABSORBED.map(([title, where, key]) => ({
 						title, url: urlOf(title), supersededBy: where, probe: probe(key),
@@ -114,7 +114,7 @@ export default {
 				},
 				{
 					title: 'External applications',
-					blurb: 'Other services on this host, not administration surfaces. Configure URLs in Settings → Control Tower.',
+					blurb: 'Other services on this host, not administration surfaces. Configure URLs in Settings → NC Tower.',
 					rows: filterConfigured(APPS.map(([title, key]) => ({ title, url: urlOf(title), probe: probe(key) }))),
 				},
 				{

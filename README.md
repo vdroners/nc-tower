@@ -1,8 +1,8 @@
-# Control Tower
+# NC Tower
 
-**Version 1.12.0**
+**Version 1.12.1**
 
-Control Tower is the Nextcloud orchestrator for this GCS host: Nextcloud admin, Docker
+NC Tower is the Nextcloud orchestrator for this GCS host: Nextcloud admin, Docker
 day-ops, host health and the ops inbox in one place, so routine work does not need
 Portainer, Webmin or an SSH session.
 
@@ -36,7 +36,7 @@ one ever appears.
 | **Ops** | Verdict banner and attention list first; then containers, stacks, host and disks, SMART, GPU, fans, engine, images, volumes, networks, events, backup, ops inbox |
 | **Host** | Mounts, package updates, top processes, systemd (allowlisted restart), cron, network |
 | **Apps** · **System** · **Users** | Nextcloud administration, rebuilt in Vue |
-| **Tools** | Deep links to Portainer, Webmin, Kuma, Caddy, Guacamole, WebODM, OrcaSlicer, ADSB, MediaMTX (configure URLs in Settings → Control Tower; empty = hidden) |
+| **Tools** | Deep links to Portainer, Webmin, Kuma, Caddy, Guacamole, WebODM, OrcaSlicer, ADSB, MediaMTX (configure URLs in Settings → NC Tower; empty = hidden) |
 
 Ops leads with a verdict — all clear, needs attention, or critical — over the findings that
 produced it, with detail sections collapsed behind. The rules live in
@@ -58,7 +58,7 @@ reports the physical host. They legitimately differ and are labelled accordingly
 
 ## Security never-list
 
-Control Tower does **not**:
+NC Tower does **not**:
 
 - Mount `/var/run/docker.sock` into the Nextcloud PHP container (`cloud_app`)
 - Offer a host shell, a file manager, or an unrestricted Portainer clone

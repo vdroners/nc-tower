@@ -1,6 +1,6 @@
 <?php
 /**
- * Control Tower route-resolution gates (G25).
+ * NC Tower route-resolution gates (G25).
  *
  * Run inside cloud_app as www-data:
  *   docker exec -u www-data cloud_app php \

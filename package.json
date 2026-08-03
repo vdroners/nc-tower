@@ -1,7 +1,7 @@
 {
 	"name": "nc_tower",
-	"version": "1.12.0",
-	"description": "Control Tower \u2014 Nextcloud orchestrator for admin, stacks, host health, and ops inbox",
+	"version": "1.12.1",
+	"description": "NC Tower \u2014 Nextcloud orchestrator for admin, stacks, host health, and ops inbox",
 	"license": "AGPL-3.0-or-later",
 	"private": true,
 	"scripts": {

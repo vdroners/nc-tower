@@ -13,7 +13,7 @@
 				</li>
 			</ul>
 			<p v-else class="nc-tower-widget__facts">{{ facts }}</p>
-			<a class="nc-tower-widget__link" :href="opsUrl">Open Control Tower →</a>
+			<a class="nc-tower-widget__link" :href="opsUrl">Open NC Tower →</a>
 		</template>
 	</div>
 </template>

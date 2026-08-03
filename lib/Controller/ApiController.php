@@ -12,7 +12,7 @@ use OCP\IConfig;
 use OCP\IRequest;
 
 /**
- * Control Tower API (admin-only by default).
+ * NC Tower API (admin-only by default).
  */
 class ApiController extends OCSController {
 	public function __construct(
@@ -32,7 +32,7 @@ class ApiController extends OCSController {
 		return new DataResponse([
 			'app' => 'nc_tower',
 			'version' => $version,
-			'message' => 'Control Tower',
+			'message' => 'NC Tower',
 		]);
 	}
 }

@@ -21,7 +21,7 @@ class AdminSection implements IIconSection {
 	}
 
 	public function getName(): string {
-		return $this->l10n->t('Control Tower');
+		return $this->l10n->t('NC Tower');
 	}
 
 	public function getPriority(): int {

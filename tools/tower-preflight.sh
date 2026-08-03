@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Control Tower preflight gates
+# NC Tower preflight gates
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -42,7 +42,7 @@ check G16 "CREDITS names Wolfgang" grep -q 'Wolfgang' CREDITS.md
 check G16 "README Attribution" grep -qi 'Attribution\|Fork lineage\|zomtec2311/admincockpit' README.md
 check G16 "info.xml upstream author" grep -q 'Wolfgang' appinfo/info.xml
 check G16 "app id nc_tower" grep -q '<id>nc_tower</id>' appinfo/info.xml
-check G16 "name Control Tower" grep -q '<name>Control Tower</name>' appinfo/info.xml
+check G16 "name NC Tower" grep -q '<name>NC Tower</name>' appinfo/info.xml
 
 # --- G10 routes -------------------------------------------------------------
 for route in "page#ops" "page#host" "page#tools" "tower#hostGpu" "tower#fanSet" \
@@ -137,7 +137,7 @@ fi
 
 # --- G26 house style --------------------------------------------------------
 # The estate convention is an inline-SVG registry per app (GcsIcon, NcPrintIcon)
-# and nc-<app>- class prefixes. Control Tower used Unicode glyphs and a bare
+# and nc-<app>- class prefixes. NC Tower used Unicode glyphs and a bare
 # tower- prefix until 1.10.0.
 check G26 "icon component present" test -f src/components/NcTowerIcon.vue
 if grep -rlP '[\x{25B4}\x{25B8}\x{25B2}\x{25BC}\x{25CE}\x{21BB}]' src/ --include=*.vue 2>/dev/null | grep -qv NcTowerIcon.vue; then
@@ -151,7 +151,7 @@ if grep -rE '(="|\x27|\.|--)tower-' src/ --include=*.vue >/dev/null 2>&1; then
 else
   echo "PASS G26 classes use the nc-tower- prefix"
 fi
-check G26 "app icon rebranded off upstream" grep -q 'Control Tower' img/app.svg
+check G26 "app icon rebranded off upstream" grep -q 'NC Tower' img/app.svg
 check G26 "chart component present" test -f src/components/TowerChart.vue
 check G26 "sparkline component present" test -f src/components/Sparkline.vue
 check G26 "job panel present" test -f src/components/JobPanel.vue

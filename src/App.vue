@@ -2,10 +2,10 @@
 	<div id="nc-tower-root">
 		<a href="#nc-tower-main" class="nc-tower-skip">Skip to main content</a>
 
-		<nav class="nc-tower-nav" aria-label="Control Tower">
+		<nav class="nc-tower-nav" aria-label="NC Tower">
 			<div class="nc-tower-nav__brand">
 				<NcTowerIcon name="radar" :size="22" class="nc-tower-nav__mark" />
-				<span class="nc-tower-nav__name">Control Tower</span>
+				<span class="nc-tower-nav__name">NC Tower</span>
 			</div>
 			<div class="nc-tower-nav__tabs">
 				<a v-for="tab in tabs"

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.12.1] - 2026-08-03
+
+### Changed
+
+- Display name **Control Tower** → **NC Tower** (app id `nc_tower` unchanged).
+
 ## [1.12.0] - 2026-08-03
 
 App Store readiness. Plan: `docs/plans/nc-tower-v1.12-appstore.md`.
@@ -22,7 +28,7 @@ App Store readiness. Plan: `docs/plans/nc-tower-v1.12-appstore.md`.
   disclosure, admin settings registration; Admin Cockpit author credit retained
 
 ### Added
-- Admin Settings → Control Tower (sidecar URL + tool URLs)
+- Admin Settings → NC Tower (sidecar URL + tool URLs)
 - `make appstore` / `appstore-sign`, CI + release workflows
 - `docs/PRIVACY.md`, `docs/plans/nc-tower-v1.12-appstore.md`
 - `make test` runs vitest; `sidecar-up-generic` for the stock compose

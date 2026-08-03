@@ -66,7 +66,7 @@ public function getId(): string {
  * @inheritDoc
  */
 public function getTitle(): string {
-  return $this->l10n->t('Control Tower');
+  return $this->l10n->t('NC Tower');
 }
 
 /**

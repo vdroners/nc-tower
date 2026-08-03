@@ -1,4 +1,4 @@
-# Control Tower — capability matrix
+# NC Tower — capability matrix
 
 Source of truth for Admin Cockpit + Webmin custom modules + Portainer CE + `/media/4TB/ops`.
 
@@ -12,7 +12,7 @@ Program target (v1.8): standalone **day-ops** — Portainer/Webmin remain break-
 |------|--------|-------|
 | Admin home / users / apps / system | IN | Rebranded; subnav Ops/Host/Tools |
 | Notifications | IN | CSRF on notify* |
-| Dashboard widget | IN | Title “Control Tower” |
+| Dashboard widget | IN | Title “NC Tower” |
 | GET mutators (enableapp, deleteuser, …) | **Debt** | Prebuilt JS; admin-only; not Ops |
 | Stub API | IN | |
 

@@ -1,6 +1,6 @@
 <?php
 /**
- * Control Tower API gates — run inside cloud_app against deployed tree.
+ * NC Tower API gates — run inside cloud_app against deployed tree.
  * Usage: php /var/www/html/custom_apps/nc_tower/tools/tower-api-gates.php
  */
 declare(strict_types=1);
@@ -27,7 +27,7 @@ gate('G08', 'info.xml readable', is_readable("$remote/appinfo/info.xml"));
 
 $xml = @file_get_contents("$remote/appinfo/info.xml") ?: '';
 gate('G09', 'id nc_tower', str_contains($xml, '<id>nc_tower</id>'));
-gate('G09', 'Control Tower name', str_contains($xml, '<name>Control Tower</name>'));
+gate('G09', 'NC Tower name', str_contains($xml, '<name>NC Tower</name>'));
 gate('G09', 'version 1.8+', (bool) preg_match('/<version>1\.(8|[9]|[1-9]\d)\.\d+<\/version>/', $xml)
 	|| (bool) preg_match('/<version>[2-9]\.\d+\.\d+<\/version>/', $xml));
 
@@ -136,7 +136,7 @@ gate('G17', 'matrix mentions allowlisted exec', str_contains($matrix, 'exec'));
 gate('G17', 'matrix Portainer section', str_contains($matrix, 'Portainer'));
 
 $widget = @file_get_contents("$remote/lib/Dashboard/NcTowerWidget.php") ?: '';
-gate('G18', 'widget title Control Tower', str_contains($widget, 'Control Tower'));
+gate('G18', 'widget title NC Tower', str_contains($widget, 'NC Tower'));
 
 $owner = posix_getpwuid(@fileowner($remote) ?: 0);
 $ownerName = $owner['name'] ?? '';

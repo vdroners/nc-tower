@@ -30,7 +30,7 @@
 		</section>
 
 		<NcNoteCard v-if="sidecarDown" type="error">
-			The Control Tower sidecar is not answering — host, Docker and stack views will be
+			The NC Tower sidecar is not answering — host, Docker and stack views will be
 			empty until it is back. Check the <code>nc_tower_sidecar</code> container and that
 			<code>nc_tower_sidecar_token</code> matches <code>sidecar/.env</code>.
 		</NcNoteCard>

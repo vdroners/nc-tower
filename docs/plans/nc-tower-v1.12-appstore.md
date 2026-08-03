@@ -2,7 +2,7 @@
 
 **Version:** 1.11.0 → **1.12.0**  
 **Date:** 2026-08-03  
-**Goal:** Clear private-API / lab-IP disqualifiers so Control Tower can ship as a generic Nextcloud app (plus optional host sidecar).
+**Goal:** Clear private-API / lab-IP disqualifiers so NC Tower can ship as a generic Nextcloud app (plus optional host sidecar).
 
 ## Why
 

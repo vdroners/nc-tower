@@ -49,7 +49,7 @@
 			<template v-else>
 				<NcNoteCard v-if="updates.reboot_required" type="error">
 					A reboot is required{{ updates.reboot_packages.length ? ` (${updates.reboot_packages.join(', ')})` : '' }}.
-					Control Tower never reboots the host — do it deliberately.
+					NC Tower never reboots the host — do it deliberately.
 				</NcNoteCard>
 				<NcNoteCard v-if="(updates.restarts_docker || []).length" type="warning">
 					{{ updates.restarts_docker.join(', ') }} will restart the Docker daemon, bouncing
@@ -96,7 +96,7 @@
 					<span class="nc-tower-cmd" :title="row.command">{{ row.command }}</span>
 				</template>
 			</DataTable>
-			<p class="nc-tower-muted">Killing processes stays out of Control Tower.</p>
+			<p class="nc-tower-muted">Killing processes stays out of NC Tower.</p>
 		</Section>
 
 		<Section id="host.systemd"
