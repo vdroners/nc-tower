@@ -117,7 +117,7 @@ export default {
 				{ key: 'uid', label: 'User ID' },
 				{ key: 'displayname', label: 'Display name' },
 				{ key: 'email', label: 'Email' },
-				{ key: 'used', label: 'Used' },
+				{ key: 'used', label: 'Used', align: 'end', sortBy: 'used_bytes' },
 				{ key: 'last', label: 'Last sign-in' },
 				{ key: 'isadmin', label: 'Role' },
 				{ key: 'status', label: 'Status' },

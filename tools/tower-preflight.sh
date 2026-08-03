@@ -192,6 +192,15 @@ d = json.load(sys.stdin)
 rows = d.get("packages") or []
 sys.exit(0 if all("new_version" in r or "raw" in r for r in rows) else 1)
 '
+  # 1.9.2: healthcheck probes drowned every real lifecycle event.
+  payload_gate G20 '/docker/events?since=6h' '
+import sys, json
+d = json.load(sys.stdin)
+rows = d.get("events") or []
+if not rows:
+    sys.exit(0)
+sys.exit(1 if all(str(r.get("Action","")).startswith("exec_") for r in rows) else 0)
+'
   payload_gate G20 /host/smart '
 import sys, json
 d = json.load(sys.stdin)

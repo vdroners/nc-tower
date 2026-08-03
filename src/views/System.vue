@@ -1,7 +1,10 @@
 <template>
 	<div class="tower-view">
 		<h2>System</h2>
-		<p class="tower-view__lead">Nextcloud, PHP, database and host facts as this server reports them.</p>
+		<p class="tower-view__lead">
+			Nextcloud, PHP and database facts. Filesystem and network figures here are the
+			Nextcloud container's own view — the Host tab shows the physical host.
+		</p>
 
 		<Section id="system.overview"
 			title="Overview"
@@ -31,12 +34,18 @@
 			<div class="tower-chips">
 				<span class="tower-chip">RAM {{ info.ram_used || '—' }} / {{ info.ram_total || '—' }}</span>
 				<span class="tower-chip">available {{ info.ram_available || '—' }}</span>
-				<span class="tower-chip">data dir {{ storageLabel }}</span>
+				<span class="tower-chip">data dir {{ storageUsedLabel }} / {{ storageTotalLabel }}</span>
 				<span class="tower-chip">DB {{ sql.dbtyp || '—' }} {{ sql.dbversion || '' }}</span>
 				<span class="tower-chip">DB size {{ sql.dbsize || '—' }}</span>
 			</div>
 			<UsageBar :percent="ramPercent" />
-			<h4 class="tower-subhead">Filesystems</h4>
+			<h4 class="tower-subhead">Data directory</h4>
+			<p class="tower-mono tower-muted">{{ storagePath }}</p>
+			<UsageBar :percent="storagePercent" />
+			<p class="tower-muted">
+				{{ storageUsedLabel }} used · {{ storageFreeLabel }} free of {{ storageTotalLabel }}
+			</p>
+			<h4 class="tower-subhead">Filesystems (as seen by the Nextcloud container)</h4>
 			<DataTable :columns="diskColumns" :rows="info.diskinfo || []" row-key="Mount" default-sort="Mount" empty-text="No filesystems">
 				<template #cell-Percent="{ row }"><UsageBar :percent="parseFloat(row.Percent)" /></template>
 				<template #cell-UsedFormatted="{ row }">{{ row.UsedFormatted }} / {{ row.TotalFormatted }}</template>
@@ -62,7 +71,7 @@
 		</Section>
 
 		<Section id="system.network"
-			title="Network interfaces"
+			title="Network interfaces (Nextcloud container)"
 			:summary="`${(info.network || []).length} interface(s)`"
 			:loading="loading.info"
 			:error="errors.info"
@@ -141,12 +150,27 @@ export default {
 		ramPercent() {
 			return parseFloat(String(this.info.ram_percent || '0'))
 		},
-		storageLabel() {
+		// /storage returns the datadirectory PATH in `folder`; the byte counts
+		// live in folder4/folder44 (used), folder3/folder33 (total) and
+		// folder2/folder22 (free). Rendering `folder` printed a path where a
+		// size was implied.
+		storagePath() {
 			const folder = this.storage.folder
-			if (folder == null || folder === -1) {
-				return '—'
-			}
-			return typeof folder === 'number' ? fmt.bytes(folder) : String(folder)
+			return typeof folder === 'string' ? folder : '—'
+		},
+		storageUsedLabel() {
+			return this.storage.folder44 || (this.storage.folder4 != null ? fmt.bytes(this.storage.folder4) : '—')
+		},
+		storageTotalLabel() {
+			return this.storage.folder33 || (this.storage.folder3 != null ? fmt.bytes(this.storage.folder3) : '—')
+		},
+		storageFreeLabel() {
+			return this.storage.folder22 || (this.storage.folder2 != null ? fmt.bytes(this.storage.folder2) : '—')
+		},
+		storagePercent() {
+			const used = Number(this.storage.folder4)
+			const total = Number(this.storage.folder3)
+			return total > 0 ? (used / total) * 100 : 0
 		},
 		extensionList() {
 			const ext = this.info.extensions

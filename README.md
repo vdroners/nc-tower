@@ -1,6 +1,6 @@
 # Control Tower
 
-**Version 1.9.1**
+**Version 1.9.2**
 
 Control Tower is the Nextcloud orchestrator for this GCS host: Nextcloud admin, Docker
 day-ops, host health and the ops inbox in one place, so routine work does not need
@@ -42,10 +42,19 @@ Ops leads with a verdict — all clear, needs attention, or critical — over th
 produced it, with detail sections collapsed behind. The rules live in
 [`src/services/health.js`](src/services/health.js) and cover unhealthy and exited
 containers, disk pressure, SMART health and drive age, temperatures, critical ops alerts,
-stale backups and pending package updates. Anything flagged opens its own section.
+stale backups, pending package updates, and Nextcloud's own health (available update,
+oversized `nextcloud.log`, app updates). Anything flagged opens its own section.
 
 Sections refresh on their own schedules (containers 10 s … SMART and packages 300 s) and
 pause entirely while the browser tab is hidden.
+
+Where Docker generates more rows than a human can read — this host reports 213 mounts of
+which 130 are `nsfs`/`overlay`, 70 interfaces of which 61 are veth, and Docker events that
+are otherwise 100% healthcheck probes — the UI filters by default, shows the full count,
+and offers a toggle. Nothing is hidden silently.
+
+The System tab reports the Nextcloud *container's* filesystems and network; the Host tab
+reports the physical host. They legitimately differ and are labelled accordingly.
 
 ## Security never-list
 
@@ -121,10 +130,12 @@ The gates are the safety net, so they check behaviour rather than only file pres
 | G21 | No `#[NoAdminRequired]` in any controller |
 | G22 | The prebuilt upstream bundles are gone |
 | G23 | Every name a Vue template uses is actually declared |
+| G24 | User storage does not depend on an API that Nextcloud 31–34 lacks |
 
-G20 and G23 exist because of real defects: shipped code once passed every route and file
-gate while the values it displayed were wrong, and webpack compiles a template that reads
-an undeclared name without complaint.
+G20, G23 and G24 each exist because of a real defect: shipped code passed every route and
+file gate while the values it displayed were wrong, webpack compiles a template that reads
+an undeclared name without complaint, and the Users tab showed a dash for every account
+while some held hundreds of gigabytes.
 
 ## Development
 

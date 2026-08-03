@@ -54,6 +54,7 @@
 		</Section>
 
 		<Section id="ops.stacks"
+			default-open
 			title="Stacks"
 			:summary="`${stackRows.length} compose file(s) on pinned dirs`"
 			:loading="loading.stacks"
@@ -78,6 +79,7 @@
 		</Section>
 
 		<Section id="ops.host"
+			default-open
 			title="Host and storage"
 			:summary="hostSummary"
 			:severity="sev.host"
@@ -246,14 +248,23 @@
 
 		<Section id="ops.events"
 			title="Docker events"
-			:summary="`${(events.events || []).length} in last 15 min`"
+			:summary="eventSummary"
 			:loading="loading.events"
 			:error="errors.events"
 			@refresh="refresh('events')">
+			<div class="tower-toolbar">
+				<NcCheckboxRadioSwitch :checked.sync="showProbes" type="switch">
+					Include healthcheck probes
+				</NcCheckboxRadioSwitch>
+			</div>
 			<DataTable :columns="eventColumns" :rows="eventRows" empty-text="No recent events" />
+			<p v-if="events.probes_hidden" class="tower-muted">
+				{{ events.probes_hidden }} healthcheck probe event(s) hidden.
+			</p>
 		</Section>
 
 		<Section id="ops.backup"
+			default-open
 			title="Backup"
 			:summary="backupSummary"
 			:severity="sev.backup"
@@ -269,6 +280,7 @@
 		</Section>
 
 		<Section id="ops.inbox"
+			default-open
 			title="Ops inbox"
 			:summary="inboxSummary"
 			:severity="sev.inbox"
@@ -371,6 +383,9 @@ export default {
 			events: {},
 			inbox: {},
 			packages: {},
+			system: {},
+			appUpdates: {},
+			showProbes: false,
 			loading: {},
 			errors: {},
 			containerFilter: '',
@@ -487,6 +502,8 @@ export default {
 				gpu: this.gpu,
 				inbox: this.inbox,
 				packages: this.packages,
+				system: this.system,
+				updates: this.appUpdates,
 			})
 		},
 		sev() {
@@ -499,6 +516,7 @@ export default {
 				smart: bySection('smart'),
 				gpu: bySection('gpu'),
 				inbox: bySection('inbox'),
+				system: bySection('system'),
 				backup: bySection('backup'),
 			}
 		},
@@ -570,6 +588,11 @@ export default {
 		backupSummary() {
 			return this.backup.status ? `${this.backup.status}${this.backup.stale ? ' · stale' : ''}` : ''
 		},
+		eventSummary() {
+			const shown = (this.events.events || []).length
+			const hidden = this.events.probes_hidden || 0
+			return hidden ? `${shown} shown · ${hidden} probes hidden` : `${shown} in last hour`
+		},
 		inboxSummary() {
 			const crit = (this.inbox.critical_recent || []).length
 			return crit ? `${crit} critical` : `${(this.inbox.inbox_recent || []).length} recent`
@@ -637,6 +660,9 @@ export default {
 		},
 	},
 	watch: {
+		showProbes() {
+			this.refresh('events')
+		},
 		logFollow(on) {
 			this.stopLogFollow()
 			if (on && this.output.name) {
@@ -651,7 +677,8 @@ export default {
 		p.add('containers', () => this.fetch('containers', '/tower/containers'), 10000)
 		p.add('host', () => this.fetch('host', '/tower/host'), 15000)
 		p.add('gpu', () => this.fetch('gpu', '/tower/gpu'), 30000)
-		p.add('events', () => this.fetch('events', '/tower/docker/events', { since: '15m' }), 30000)
+		p.add('events', () => this.fetch('events', '/tower/docker/events',
+			{ since: '60m', probes: this.showProbes ? 1 : 0 }), 30000)
 		p.add('engine', () => Promise.all([
 			this.fetch('engineRaw', '/tower/docker/info', null, 'engine'),
 			this.fetch('df', '/tower/docker/df', null, 'engine'),
@@ -668,6 +695,9 @@ export default {
 		// smartctl walks every physical disk; 1.8 ran this every 12 s.
 		p.add('smart', () => this.fetch('smart', '/tower/smart'), 300000)
 		p.add('packages', () => this.fetch('packages', '/tower/packages'), 300000)
+		// Nextcloud's own health feeds the same verdict banner.
+		p.add('system', () => this.fetch('system', '/systeminfo'), 300000)
+		p.add('appUpdates', () => this.fetch('appUpdates', '/appupdates'), 300000)
 		p.start()
 	},
 	beforeDestroy() {

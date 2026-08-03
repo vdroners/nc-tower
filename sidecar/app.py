@@ -1336,17 +1336,41 @@ def docker_df() -> dict[str, Any]:
     }
 
 
-def docker_events(since: str) -> dict[str, Any]:
+def docker_events(since: str, include_probes: bool = False) -> dict[str, Any]:
+    """Recent Docker events, healthcheck probes excluded by default.
+
+    Every container with a healthcheck emits exec_create/exec_start/exec_die on
+    each probe. On this host that is 100% of the last hundred events, so the
+    lifecycle events worth seeing — start, die, pull, health_status — were
+    evicted by the cap before anyone could read them. Filter first, cap after.
+    """
     if not _SAFE_EVENT_SINCE_RE.fullmatch(since):
         return {"ok": False, "error": "since_must_be_duration", "http": 400}
     until = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     result = _run(
         [_docker_bin(), "events", "--since", since, "--until", until, "--format", "{{json .}}"],
         timeout=35,
-        max_output=500_000,
+        max_output=2_000_000,
     )
-    rows = _json_lines(result["stdout"])[-100:]
-    return {"ok": result["exit"] == 0, "events": rows, "since": since, "until": until, "ts": time.time()}
+    parsed = _json_lines(result["stdout"])
+    probes = 0
+    rows = []
+    for row in parsed:
+        action = str(row.get("Action") or row.get("action") or "") if isinstance(row, dict) else ""
+        if action.startswith("exec_"):
+            probes += 1
+            if not include_probes:
+                continue
+        rows.append(row)
+    return {
+        "ok": result["exit"] == 0,
+        "events": rows[-200:],
+        "since": since,
+        "until": until,
+        "total": len(parsed),
+        "probes_hidden": 0 if include_probes else probes,
+        "ts": time.time(),
+    }
 
 
 def docker_images() -> dict[str, Any]:
@@ -1632,7 +1656,10 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/docker/df":
                 self._result(docker_df())
             elif path == "/docker/events":
-                self._result(docker_events((query.get("since") or ["1h"])[0]))
+                self._result(docker_events(
+                    (query.get("since") or ["1h"])[0],
+                    (query.get("probes") or ["0"])[0] in ("1", "true", "yes"),
+                ))
             elif path == "/docker/images":
                 self._result(docker_images())
             elif path == "/docker/volumes":

@@ -76,6 +76,18 @@ gate('G19', 'bundle never sends the sidecar header', !str_contains($js, 'X-Ops-T
 // so nothing about it belongs in the deployed web-app tree.
 gate('G11', 'sidecar/.env not deployed into the web root', !is_file("$remote/sidecar/.env"));
 
+// --- G24 user storage -------------------------------------------------------
+// quotaUsedLabel() used to depend on an IUser method that does not exist on
+// NC 31-34, so every account displayed a dash while some held hundreds of GB.
+$uc = @file_get_contents("$remote/lib/Controller/UserController.php") ?: '';
+gate('G24', 'user storage read from the file cache', str_contains($uc, 'storageUsedMap'));
+// Match a call, not the word: the fix documents why getQuotaUsage was dropped,
+// and a bare substring check would fail on its own explanation.
+gate('G24', 'no dependency on absent getQuotaUsage',
+	!preg_match('/->\s*getQuotaUsage\s*\(/', $uc)
+	&& !preg_match('/method_exists\s*\([^)]*getQuotaUsage/', $uc));
+gate('G24', 'raw bytes exposed for sorting', str_contains($uc, 'used_bytes'));
+
 // --- G21 admin gating -------------------------------------------------------
 $stray = [];
 foreach (glob("$remote/lib/Controller/*.php") ?: [] as $file) {

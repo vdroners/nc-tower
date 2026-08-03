@@ -209,7 +209,11 @@ class TowerController extends Controller {
 	#[NoCSRFRequired]
 	public function dockerEvents(): DataResponse {
 		$since = (string) $this->request->getParam('since', '15m');
-		return $this->getJson('/docker/events?since=' . rawurlencode($since), 40);
+		$probes = (string) $this->request->getParam('probes', '0');
+		return $this->getJson(
+			'/docker/events?since=' . rawurlencode($since) . '&probes=' . ($probes === '1' ? '1' : '0'),
+			40
+		);
 	}
 
 	#[NoCSRFRequired]

@@ -84,7 +84,10 @@ export default {
 			if (!this.sortKey) {
 				return this.rows
 			}
-			const key = this.sortKey
+			// A column may sort on a companion field: "521.91 GB" and "66.59 MB"
+			// do not compare as strings, so used sorts on used_bytes.
+			const col = this.columns.find((c) => c.key === this.sortKey)
+			const key = col?.sortBy || this.sortKey
 			const direction = this.sortAsc ? 1 : -1
 			return [...this.rows].sort((a, b) => {
 				const left = a[key]

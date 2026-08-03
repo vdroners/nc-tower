@@ -110,6 +110,7 @@ class UserController extends Controller {
                     'first' => $this->formatLoginTs($user->getFirstLogin()),
 					// Never recurse user homes here — hangs on large datadirs.
                     'used' => $this->quotaUsedLabel($user),
+                    'used_bytes' => $this->storageUsedMap()[$user->getUID()] ?? 0,
                     'isadmin' => $this->groupManager->isAdmin($user->getUID()),
                     'status' => $status,
                 ];
@@ -140,6 +141,7 @@ class UserController extends Controller {
 						'last' => $this->formatLoginTs($guser->getLastLogin()),
 						'first' => $this->formatLoginTs($guser->getFirstLogin()),
 						'used' => $this->quotaUsedLabel($guser),
+						'used_bytes' => $this->storageUsedMap()[$guser->getUID()] ?? 0,
 						'isadmin' => $this->groupManager->isAdmin($guser->getUID()),
 						'status' => $status,
 					];
@@ -183,25 +185,55 @@ class UserController extends Controller {
 		return (string) $this->l->l('datetime', $ts);
 	}
 
-	/** Fast quota label — no filesystem walk. */
-	private function quotaUsedLabel(\OCP\IUser $user): string {
+	/** @var array<string,int>|null uid => bytes used, loaded once per request */
+	private ?array $storageUsed = null;
+
+	/**
+	 * Bytes used per user, read straight from the file cache.
+	 *
+	 * The previous implementation asked for IUser::getQuotaUsage(), which does
+	 * not exist on Nextcloud 31–34, so every account fell through to a dash —
+	 * including the ones holding hundreds of gigabytes. The size of each user's
+	 * `files` folder is already maintained in oc_filecache, so a single join
+	 * gets every account at once (126 rows in ~1 ms here) without setting up a
+	 * filesystem per user, which is what made 1.4.1 hang.
+	 *
+	 * @return array<string,int> uid => bytes
+	 */
+	private function storageUsedMap(): array {
+		if ($this->storageUsed !== null) {
+			return $this->storageUsed;
+		}
+		$map = [];
 		try {
-			$home = $user->getHome();
-			if (!is_string($home) || $home === '' || !is_dir($home)) {
-				return '—';
-			}
-			// Prefer Nextcloud quota used when available (cheap).
-			if (method_exists($user, 'getQuotaUsage')) {
-				/** @var mixed $usage */
-				$usage = $user->getQuotaUsage();
-				if (is_numeric($usage) && (int) $usage >= 0) {
-					return $this->myService->formatBytes((int) $usage);
+			$db = \OCP\Server::get(\OCP\IDBConnection::class);
+			$query = $db->getQueryBuilder();
+			$query->select('s.id', 'f.size')
+				->from('filecache', 'f')
+				->innerJoin('f', 'storages', 's', 'f.storage = s.numeric_id')
+				->where($query->expr()->eq('f.path', $query->createNamedParameter('files')))
+				->andWhere($query->expr()->like('s.id', $query->createNamedParameter('home::%')));
+			$result = $query->executeQuery();
+			foreach ($result->fetchAll() as $row) {
+				$uid = substr((string) $row['id'], strlen('home::'));
+				$size = (int) $row['size'];
+				if ($uid !== '' && $size >= 0) {
+					$map[$uid] = $size;
 				}
 			}
-		} catch (\Throwable) {
+			$result->closeCursor();
+		} catch (\Throwable $e) {
+			$this->logger->warning('NcTower: storage usage lookup failed: ' . $e->getMessage(), ['app' => 'nc_tower']);
 		}
-		return '—';
-	}   
+		$this->storageUsed = $map;
+		return $map;
+	}
+
+	/** Fast quota label — no filesystem walk. */
+	private function quotaUsedLabel(\OCP\IUser $user): string {
+		$used = $this->storageUsedMap()[$user->getUID()] ?? null;
+		return $used === null ? '—' : $this->myService->formatBytes($used);
+	}
     
     public function deleteuser($who) {
         try {
@@ -244,6 +276,7 @@ class UserController extends Controller {
                     'lastlogin' => $user->getLastLogin(),
                     'firstlogin' => $user->getFirstLogin(),
                     'used' => $this->quotaUsedLabel($user),
+                    'used_bytes' => $this->storageUsedMap()[$user->getUID()] ?? 0,
                     'status' => true,
                 ];
             

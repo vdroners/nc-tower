@@ -14,6 +14,25 @@ const RANK = { [OK]: 0, [WARN]: 1, [CRIT]: 2 }
 
 const HOURS_5Y = 43800
 const HOURS_7Y = 61320
+const LOG_WARN_BYTES = 100 * 1024 * 1024
+const LOG_CRIT_BYTES = 512 * 1024 * 1024
+
+const SIZE_UNITS = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }
+
+/**
+ * Nextcloud reports sizes pre-formatted ("103.73 MB"), so thresholds have to
+ * parse them back.
+ *
+ * @param {string} value formatted size
+ * @return {number|null} bytes, or null when unparseable
+ */
+function parseSize(value) {
+	const match = String(value || '').match(/([\d.]+)\s*([KMGT]?B)/i)
+	if (!match) {
+		return null
+	}
+	return parseFloat(match[1]) * (SIZE_UNITS[match[2].toUpperCase()] || 1)
+}
 
 /**
  * @param {...string} levels severities
@@ -123,6 +142,23 @@ export function assess(data) {
 	if (updates) {
 		add(WARN, `${updates} package update${updates > 1 ? 's' : ''} pending`,
 			'host has upgradable packages', 'host-packages')
+	}
+
+	// Nextcloud's own health — otherwise only visible by opening System or Apps.
+	const system = data.system || {}
+	if (system.nc_updateAvailable) {
+		add(WARN, `Nextcloud ${system.nc_updateVersion || 'update'} available`,
+			`running ${system.nc_currentVersionimplode || system.nc_version || '?'}`, 'system')
+	}
+	const logBytes = parseSize(system.nc_logfile_size)
+	add(overThreshold(logBytes, LOG_WARN_BYTES, LOG_CRIT_BYTES),
+		`nextcloud.log is ${system.nc_logfile_size}`,
+		'rotate or truncate the Nextcloud log', 'system')
+
+	const appUpdates = data.updates?.appscount || 0
+	if (appUpdates) {
+		add(WARN, `${appUpdates} app update${appUpdates > 1 ? 's' : ''} available`,
+			'Nextcloud apps have updates pending', 'apps')
 	}
 
 	items.sort((a, b) => RANK[b.severity] - RANK[a.severity])

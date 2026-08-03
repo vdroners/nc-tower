@@ -63,6 +63,8 @@ export default {
 				containers: this.containers,
 				smart: this.smart,
 				inbox: this.inbox,
+				system: this.system,
+				updates: this.updates,
 			})
 		},
 		facts() {

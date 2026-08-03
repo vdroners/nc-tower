@@ -8,7 +8,7 @@
 
 		<Section id="host.mounts"
 			title="Mounts"
-			:summary="`${(mounts.mounts || []).length} mounted filesystem(s)`"
+			:summary="mountSummary"
 			:loading="loading.mounts"
 			:error="errors.mounts"
 			default-open
@@ -24,8 +24,13 @@
 				<template #cell-device="{ row }">{{ row.mount ? row.mount.device : '—' }}</template>
 			</DataTable>
 			<h4 class="tower-subhead">All mounts</h4>
+			<div class="tower-toolbar">
+				<NcCheckboxRadioSwitch :checked.sync="showAllMounts" type="switch">
+					Show container and pseudo filesystems ({{ (mounts.mounts || []).length }} total)
+				</NcCheckboxRadioSwitch>
+			</div>
 			<DataTable :columns="mountColumns"
-				:rows="mounts.mounts || []"
+				:rows="visibleMounts"
 				default-sort="mountpoint"
 				empty-text="None">
 				<template #cell-options="{ row }">{{ (row.options || []).slice(0, 4).join(', ') }}</template>
@@ -114,11 +119,16 @@
 
 		<Section id="host.net"
 			title="Network"
-			:summary="`${(net.ifaces || []).length} interface(s)`"
+			:summary="ifaceSummary"
 			:loading="loading.net"
 			:error="errors.net"
 			@refresh="refresh('net')">
-			<DataTable :columns="netColumns" :rows="net.ifaces || []" row-key="name" default-sort="name" empty-text="None">
+			<div class="tower-toolbar">
+				<NcCheckboxRadioSwitch :checked.sync="showAllIfaces" type="switch">
+					Show container interfaces ({{ (net.ifaces || []).length }} total)
+				</NcCheckboxRadioSwitch>
+			</div>
+			<DataTable :columns="netColumns" :rows="visibleIfaces" row-key="name" default-sort="name" empty-text="None">
 				<template #cell-addresses="{ row }">{{ fmt.addresses(row) || '—' }}</template>
 				<template #cell-state="{ row }">
 					<span :class="row.state === 'up' ? 'tower-good' : 'tower-muted'">{{ row.state || '—' }}</span>
@@ -136,6 +146,7 @@
 <script>
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/dist/Components/NcCheckboxRadioSwitch.js'
 import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
 
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -147,9 +158,16 @@ import { get, post } from '../services/api.js'
 import fmt from '../services/format.js'
 import Poller from '../services/poll.js'
 
+const PSEUDO_FS = new Set([
+	'nsfs', 'overlay', 'squashfs', 'tmpfs', 'devtmpfs', 'proc', 'sysfs', 'cgroup', 'cgroup2',
+	'devpts', 'mqueue', 'hugetlbfs', 'debugfs', 'tracefs', 'securityfs', 'pstore', 'bpf',
+	'configfs', 'fusectl', 'binfmt_misc', 'autofs', 'ramfs', 'efivarfs',
+])
+const CONTAINER_IFACE = /^(veth|br-|docker|virbr)/
+
 export default {
 	name: 'Host',
-	components: { ConfirmDialog, DataTable, Section, UsageBar, NcButton, NcNoteCard },
+	components: { ConfirmDialog, DataTable, Section, UsageBar, NcButton, NcCheckboxRadioSwitch, NcNoteCard },
 	data() {
 		return {
 			fmt,
@@ -161,6 +179,8 @@ export default {
 			net: {},
 			loading: {},
 			errors: {},
+			showAllMounts: false,
+			showAllIfaces: false,
 			confirm: { open: false, title: '', message: '', confirmLabel: 'Confirm', phrase: '', danger: false },
 			pendingAction: null,
 			watchedColumns: [
@@ -206,6 +226,33 @@ export default {
 		}
 	},
 	computed: {
+		// This host reports 213 mounts, 130 of them docker nsfs/overlay, and 70
+		// interfaces, 61 of them veth/bridge. Showing everything by default made
+		// both sections unreadable; the counts above the toggle keep it honest.
+		visibleMounts() {
+			const rows = this.mounts.mounts || []
+			if (this.showAllMounts) {
+				return rows
+			}
+			return rows.filter((row) => !PSEUDO_FS.has(row.fstype) && !String(row.fstype || '').startsWith('fuse.'))
+		},
+		visibleIfaces() {
+			const rows = this.net.ifaces || []
+			if (this.showAllIfaces) {
+				return rows
+			}
+			return rows.filter((row) => !CONTAINER_IFACE.test(row.name || ''))
+		},
+		mountSummary() {
+			const shown = this.visibleMounts.length
+			const total = (this.mounts.mounts || []).length
+			return shown === total ? `${total} filesystem(s)` : `${shown} of ${total} filesystem(s)`
+		},
+		ifaceSummary() {
+			const shown = this.visibleIfaces.length
+			const total = (this.net.ifaces || []).length
+			return shown === total ? `${total} interface(s)` : `${shown} of ${total} interface(s)`
+		},
 		packageSummary() {
 			const count = (this.packages.packages || []).length
 			return count ? `${count} upgradable` : 'up to date'

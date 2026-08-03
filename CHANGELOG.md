@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.9.2] - 2026-08-02
+
+Fixes found by auditing the deployed app against live data — every column of every
+table checked against the payload that feeds it.
+
+### Fixed
+- **Users → Used was always `—`** while 15 of 126 accounts held real data (521 GB,
+  66 GB, 63 GB…). `quotaUsedLabel()` depended on `IUser::getQuotaUsage()`, which does
+  not exist on Nextcloud 31–34, so every account fell through to a dash. Replaced with
+  a single `filecache`⋈`storages` join covering all users at once — no per-user
+  filesystem setup, so it does not reintroduce the 1.4.1 hang. Sorts on raw bytes
+- **System → "data dir" showed a filesystem path where a size belongs.** `/storage`
+  returns the datadirectory *path* in `folder`; the byte counts are in `folder4`/`folder3`.
+  Now renders used / free / total with a usage bar
+- **Ops → Docker events was 100% healthcheck noise** — every event in the last hour was
+  `exec_create`/`exec_start`/`exec_die`, and the 100-row cap evicted real lifecycle
+  events before anyone saw them. The sidecar now filters probes before capping, so
+  start/die/pull/health_status are visible; a switch restores them
+
+### Changed
+- Host → Mounts hides container and pseudo filesystems by default (213 rows → 9 here)
+  and Host → Network hides docker veth/bridge interfaces (70 → 9). Both show the total
+  and a toggle, so nothing is filtered silently
+- The verdict banner now covers Nextcloud's own health: pending Nextcloud update,
+  oversized `nextcloud.log`, and app updates
+- Ops opens Containers, Stacks, Host and storage, and Backup / Ops inbox by default
+- System labels its filesystem and network figures as the Nextcloud container's view —
+  the Host tab reports the physical host, and the two legitimately differ
+
+### Added
+- Gate G24 (user storage no longer depends on an absent API) and a G20 case asserting
+  Docker events are not exclusively healthcheck probes
+
 ## [1.9.1] - 2026-08-02
 
 ### Fixed
