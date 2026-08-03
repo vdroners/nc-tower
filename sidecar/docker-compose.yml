@@ -1,74 +1,58 @@
+# Generic Control Tower sidecar — no lab paths or IPs.
+# Copy sidecar/.env.example → .env and set mounts / allowlists for your host.
+#
+# Lab (GCS) overlay: docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d
+# Or use docker-compose.lab.yml alone on the operator estate.
+
 services:
   nc-tower-sidecar:
-    image: python:3.12-slim-bookworm
+    build: .
+    image: ${NC_TOWER_SIDECAR_IMAGE:-nc-tower-sidecar:local}
     container_name: nc_tower_sidecar
     restart: unless-stopped
     working_dir: /app
-    # Host agent: Docker CLI + allowlisted host tools (privileged for SMART/GPU/sysfs)
     privileged: true
     pid: host
-    command: ["python", "/app/app.py"]
     env_file:
       - .env
     environment:
       NC_TOWER_BIND: "0.0.0.0"
       NC_TOWER_PORT: "18765"
-      # Token comes from env_file (.env) — do not override with empty host env
-      NC_TOWER_OPS_ROOT: /ops
-      NC_TOWER_HOST_PROC: /hostproc
-      NC_TOWER_FAN_HELPER: /usr/local/bin/gpu-fan-helper.py
-      NC_TOWER_NVIDIA_SMI: /usr/bin/nvidia-smi
-      NC_TOWER_SMARTCTL: /usr/sbin/smartctl
-      NC_TOWER_DOCKER: /usr/bin/docker
-      NC_TOWER_BACKUP_SCRIPT: /ops/bin/webmin/backup-enhanced.sh
-      NC_TOWER_AUDIT_LOG: /var/log/nc-tower-sidecar/audit.log
-      NC_TOWER_DISK_PATHS: "/,/media/4TB,/media/6TB,/media/raid5"
-      NC_TOWER_COMPOSE_DIRS: "/media/4TB/nc-gcs,/media/4TB/cloud,/media/4TB/webodm,/media/4TB/caddy-proxy-manager,/media/4TB/wireguard,/media/4TB/guac,/media/4TB/octoslicer,/media/4TB/sim/sim2,/media/4TB/nc-tower,/media/4TB/nc-print,/media/4TB/ollama"
-      # Mutate allow (deny wins). Expand via env for sitl/simcam/adsb day-ops.
-      NC_TOWER_CONTAINER_ALLOW: "${NC_TOWER_CONTAINER_ALLOW:-gcs_*,mavlink_gateway,gcs_sitl,gcs_simcam,gcs_adsb*}"
-      # Optional wider RO-log tier (comma patterns); empty = same as mutate allow
-      NC_TOWER_CONTAINER_LOG_ALLOW: "${NC_TOWER_CONTAINER_LOG_ALLOW:-}"
-      NC_TOWER_CONTAINER_DENY: "${NC_TOWER_CONTAINER_DENY:-nc_tower_sidecar,cloud_*,portainer,wg-easy,talk_*,*openclaw*}"
-      NC_TOWER_SYSTEMD_ALLOW: "${NC_TOWER_SYSTEMD_ALLOW:-docker.service,openclaw-gateway.service,fancontrol.service,cron.service,ssh.service}"
-      NC_TOWER_IMAGE_PULL_ALLOW: "${NC_TOWER_IMAGE_PULL_ALLOW:-veterandroners/*,ghcr.io/vdroners/*}"
-      LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu
+      NC_TOWER_OPS_ROOT: ${NC_TOWER_OPS_ROOT:-/ops}
+      NC_TOWER_HOST_PROC: ${NC_TOWER_HOST_PROC:-/hostproc}
+      NC_TOWER_FAN_HELPER: ${NC_TOWER_FAN_HELPER:-/usr/local/bin/gpu-fan-helper.py}
+      NC_TOWER_NVIDIA_SMI: ${NC_TOWER_NVIDIA_SMI:-/usr/bin/nvidia-smi}
+      NC_TOWER_SMARTCTL: ${NC_TOWER_SMARTCTL:-/usr/sbin/smartctl}
+      NC_TOWER_DOCKER: ${NC_TOWER_DOCKER:-/usr/bin/docker}
+      NC_TOWER_BACKUP_SCRIPT: ${NC_TOWER_BACKUP_SCRIPT:-/ops/bin/backup.sh}
+      NC_TOWER_AUDIT_LOG: ${NC_TOWER_AUDIT_LOG:-/var/log/nc-tower-sidecar/audit.log}
+      NC_TOWER_DISK_PATHS: ${NC_TOWER_DISK_PATHS:-/}
+      NC_TOWER_COMPOSE_DIRS: ${NC_TOWER_COMPOSE_DIRS:-}
+      NC_TOWER_SERVICE_TARGETS: ${NC_TOWER_SERVICE_TARGETS:-}
+      NC_TOWER_HOST_JOBS_DIR: ${NC_TOWER_HOST_JOBS_DIR:-/ops/jobs}
+      NC_TOWER_CONTAINER_ALLOW: ${NC_TOWER_CONTAINER_ALLOW:-}
+      NC_TOWER_CONTAINER_LOG_ALLOW: ${NC_TOWER_CONTAINER_LOG_ALLOW:-}
+      NC_TOWER_CONTAINER_DENY: ${NC_TOWER_CONTAINER_DENY:-nc_tower_sidecar}
+      NC_TOWER_SYSTEMD_ALLOW: ${NC_TOWER_SYSTEMD_ALLOW:-docker.service,ssh.service}
+      NC_TOWER_IMAGE_PULL_ALLOW: ${NC_TOWER_IMAGE_PULL_ALLOW:-}
     volumes:
-      - ./app.py:/app/app.py:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker:ro
-      - /usr/libexec/docker/cli-plugins:/usr/libexec/docker/cli-plugins:ro
-      - /usr/local/bin/docker-compose:/usr/local/bin/docker-compose:ro
-      - /usr/bin/systemctl:/usr/bin/systemctl:ro
-      - /usr/bin/nsenter:/usr/bin/nsenter:ro
-      - /usr/bin/apt:/usr/bin/apt:ro
-      - /usr/bin/apt-get:/usr/bin/apt-get:ro
-      - /media/4TB/ops:/ops
-      - /media/4TB:/media/4TB:ro
-      - /media/6TB:/media/6TB:ro
-      - /media/raid5:/media/raid5:ro
-      - /usr/bin/nvidia-smi:/usr/bin/nvidia-smi:ro
-      - /usr/sbin/smartctl:/usr/sbin/smartctl:ro
-      - /usr/share/webmin/fan-control/gpu-fan-helper.py:/usr/local/bin/gpu-fan-helper.py:ro
-      - /usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu:ro
-      - /lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:ro
+      - ${NC_TOWER_OPS_HOST_PATH:-./ops}:/ops
       - /dev:/dev
       - /sys:/sys:ro
       - /proc:/hostproc:ro
-      # Host /run required for systemctl (dbus + systemd private socket) with pid: host
       - /run:/run
       - /etc/os-release:/host/etc/os-release:ro
-      - /var/spool/cron:/var/spool/cron:ro
-      - /etc/crontab:/etc/crontab:ro
-      - /etc/cron.d:/etc/cron.d:ro
       - nc_tower_sidecar_audit:/var/log/nc-tower-sidecar
     ports:
-      - "127.0.0.1:18765:18765"
+      - "${NC_TOWER_PUBLISH:-127.0.0.1:18765:18765}"
     networks:
-      - cloud_cloud_network
+      - ${NC_TOWER_NETWORK:-default}
 
 volumes:
   nc_tower_sidecar_audit:
 
 networks:
-  cloud_cloud_network:
-    external: true
+  default:
+    name: ${NC_TOWER_NETWORK_NAME:-nc_tower_sidecar_net}

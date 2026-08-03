@@ -4,17 +4,21 @@
 	<id>nc_tower</id>
 	<name>Control Tower</name>
 	<summary>Nextcloud orchestrator for admin, stacks, host health, and ops inbox</summary>
-	<description><![CDATA[**Control Tower** is the Nextcloud orchestrator for this GCS host — admin, stacks, health, and ops inbox in one place.
+	<description><![CDATA[**Control Tower** is a Nextcloud admin orchestrator — users, apps, system info, and an optional host sidecar for Docker/day-ops.
 
 Fork of [Admin Cockpit](https://github.com/zomtec2311/admincockpit) by Wolfgang Tödt (AGPL-3.0), rebranded and extended.
 
-- Unified admin pages (users, apps, system)
-- Host health and Docker stack status (via allowlisted sidecar)
-- Ops inbox visibility and Tools deep-links
-- Webmin / Portainer remain break-glass for deep OS and full Docker control
+### Features
+- Unified admin pages (users, apps, system) via public Nextcloud APIs
+- Optional allowlisted host sidecar for container/stack health and ops inbox
+- Configurable deep links (Portainer, Webmin, monitoring UIs, …) — empty by default
+- Webmin / Portainer remain break-glass when you configure their URLs
+
+### Privacy / sidecar
+The Nextcloud app itself does not require the sidecar. The sidecar is an **optional privileged host agent** (Docker socket + allowlisted host tools). Administrators configure its URL and token; stock defaults use Docker DNS (`http://nc_tower_sidecar:18765`) and do not embed lab IPs. See [docs/PRIVACY.md](https://github.com/vdroners/nc-tower/blob/main/docs/PRIVACY.md).
 
 See CREDITS.md for attribution.]]></description>
-	<version>1.11.0</version>
+	<version>1.12.0</version>
 	<licence>agpl</licence>
 	<author mail="wtoedt@gmail.com" homepage="https://github.com/zomtec2311/admincockpit">Wolfgang Tödt</author>
 	<author mail="dan@19labs.com" homepage="https://github.com/vdroners/nc-tower">Sarge</author>
@@ -22,9 +26,14 @@ See CREDITS.md for attribution.]]></description>
 	<category>monitoring</category>
 	<category>tools</category>
 	<bugs>https://github.com/vdroners/nc-tower/issues</bugs>
-	<screenshot small-thumbnail="https://raw.githubusercontent.com/vdroners/nc-tower/refs/heads/main/screenshots/nc_tower-system-small.png">https://raw.githubusercontent.com/vdroners/nc-tower/refs/heads/main/screenshots/nc_tower-system.png</screenshot>
-	<screenshot small-thumbnail="https://raw.githubusercontent.com/vdroners/nc-tower/refs/heads/main/screenshots/nc_tower-apps-small.png">https://raw.githubusercontent.com/vdroners/nc-tower/refs/heads/main/screenshots/nc_tower-apps.png</screenshot>
+	<repository type="git">https://github.com/vdroners/nc-tower.git</repository>
 	<website>https://github.com/vdroners/nc-tower</website>
+	<documentation>
+		<user>https://github.com/vdroners/nc-tower/blob/main/README.md</user>
+		<admin>https://github.com/vdroners/nc-tower/blob/main/docs/PRIVACY.md</admin>
+	</documentation>
+	<screenshot small-thumbnail="https://raw.githubusercontent.com/vdroners/nc-tower/refs/heads/main/screenshots/nc_tower-system-small.png">https://raw.githubusercontent.com/vdroners/nc-tower/refs/heads/main/screenshots/nc_tower-system.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/vdroners/nc-tower/refs/heads/main/screenshots/nc_tower-apps.png</screenshot>
 	<dependencies>
 		<nextcloud min-version="31" max-version="34"/>
 	</dependencies>
@@ -37,4 +46,8 @@ See CREDITS.md for attribution.]]></description>
 			<type>link</type>
 		</navigation>
 	</navigations>
+	<settings>
+		<admin-section>OCA\NcTower\Settings\AdminSection</admin-section>
+		<admin>OCA\NcTower\Settings\AdminSettings</admin>
+	</settings>
 </info>

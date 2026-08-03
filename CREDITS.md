@@ -19,9 +19,9 @@ Maintained by **Sarge** / **vdroners** (19labs) as **Control Tower** — a Nextc
 
 ## Third-party tools (not bundled)
 
-Control Tower may deep-link to or observe:
+Control Tower may deep-link to or observe (when an admin configures URLs):
 
 - Portainer, Webmin, Uptime Kuma, Caddy, and other host services
-- Scripts under `/media/4TB/ops` on the operator’s server
+- Optional ops scripts under an administrator-chosen ops root
 
 Those projects retain their own licenses and are not part of this repository.

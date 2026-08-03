@@ -56,26 +56,12 @@ HOST_PROC = (
 
 COMPOSE_DIRS = _csv_env(
     "COMPOSE_DIRS",
-    ",".join(
-        (
-            "/media/4TB/nc-tower",
-            "/media/4TB/nc-gcs",
-            "/media/4TB/nc-print",
-            "/media/4TB/ollama",
-            "/media/4TB/cloud",
-            "/media/4TB/webodm",
-            "/media/4TB/caddy-proxy-manager",
-            "/media/4TB/wireguard",
-            "/media/4TB/guac",
-            "/media/4TB/octoslicer",
-            "/media/4TB/sim/sim2",
-        )
-    ),
+    "",
     "NC_TOWER_COMPOSE_DIRS",
 )
 DISK_PATHS = _csv_env(
     "DISK_PATHS",
-    "/,/media/4TB,/media/6TB,/media/raid5",
+    "/",
     "NC_TOWER_DISK_PATHS",
 )
 CONTAINER_ALLOW = _csv_env(
@@ -1567,7 +1553,7 @@ def job_start(kind: str, body: dict[str, Any]) -> dict[str, Any]:
 
     # Host-side paths: the sidecar sees /ops, systemd on the host sees the real
     # directory the volume comes from.
-    host_jobs = _env("HOST_JOBS_DIR", "/media/4TB/ops/jobs", "NC_TOWER_HOST_JOBS_DIR")
+    host_jobs = _env("HOST_JOBS_DIR", "/ops/jobs", "NC_TOWER_HOST_JOBS_DIR")
     host_log = f"{host_jobs}/{job_id}.log"
     host_rc = f"{host_jobs}/{job_id}.rc"
     inner = " ".join(shlex.quote(part) for part in argv)
@@ -1698,16 +1684,13 @@ def ops_timeline(hours: int = 24) -> dict[str, Any]:
     return {"ok": True, "events": events, "hours": hours, "ts": time.time()}
 
 
-# Deep-linked services. Any HTTP answer means reachable: Guacamole and MediaMTX
-# both return 404 at / while perfectly healthy, so only a connection failure
-# counts as down.
+# Deep-linked services. Empty by default — set NC_TOWER_SERVICE_TARGETS
+# (name=url CSV) on the host. Any HTTP answer means reachable: Guacamole and
+# MediaMTX both return 404 at / while perfectly healthy, so only a connection
+# failure counts as down.
 SERVICE_TARGETS = _csv_env(
     "SERVICE_TARGETS",
-    "portainer=https://10.0.0.84:9443,webmin=https://10.0.0.84:10000,"
-    "kuma=http://10.0.0.84:3100,caddy=http://10.0.0.84:3080,"
-    "guacamole=http://10.0.0.84:8081,webodm=http://10.0.0.84:8001,"
-    "orcaslicer=http://10.0.0.84:3030,adsb=http://10.0.0.84:8087,"
-    "mediamtx=http://10.0.0.84:8889,nextcloud=http://10.0.0.84:8080",
+    "",
     "NC_TOWER_SERVICE_TARGETS",
 )
 

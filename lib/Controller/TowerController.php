@@ -7,6 +7,7 @@ namespace OCA\NcTower\Controller;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\DataResponse;
+use OCA\NcTower\Service\EndpointConfigService;
 use OCP\IConfig;
 use OCP\IRequest;
 use Psr\Log\LoggerInterface;
@@ -21,15 +22,13 @@ class TowerController extends Controller {
 		IRequest $request,
 		private IConfig $config,
 		private LoggerInterface $logger,
+		private EndpointConfigService $endpoints,
 	) {
 		parent::__construct($appName, $request);
 	}
 
 	private function sidecarBase(): string {
-		return rtrim($this->config->getSystemValueString(
-			'nc_tower_sidecar_url',
-			'http://nc_tower_sidecar:18765'
-		), '/');
+		return $this->endpoints->getSidecarUrl();
 	}
 
 	private function sidecarToken(): string {
@@ -369,64 +368,6 @@ class TowerController extends Controller {
 
 	#[NoCSRFRequired]
 	public function tools(): DataResponse {
-		$baseWebmin = 'https://10.0.0.84:10000';
-		return new DataResponse([
-			'groups' => [
-				[
-					'title' => 'Orchestration',
-					'tools' => [
-						['title' => 'Portainer', 'url' => 'https://10.0.0.84:9443'],
-						['title' => 'Webmin', 'url' => $baseWebmin],
-					],
-				],
-				[
-					'title' => 'Host (Webmin break-glass)',
-					'tools' => [
-						['title' => 'System Health', 'url' => $baseWebmin . '/system-health/'],
-						['title' => 'Docker', 'url' => $baseWebmin . '/docker/'],
-						['title' => 'Docker Stacks', 'url' => $baseWebmin . '/docker-stacks/'],
-						['title' => 'NVIDIA GPU', 'url' => $baseWebmin . '/nvidia-gpu/'],
-						['title' => 'SMART Health', 'url' => $baseWebmin . '/smart-health/'],
-						['title' => 'Backup Mgr', 'url' => $baseWebmin . '/backup-mgr/'],
-						['title' => 'Fan Control (chassis PWM)', 'url' => $baseWebmin . '/fan-control/'],
-					],
-				],
-				[
-					'title' => 'Apps',
-					'tools' => [
-						['title' => 'Uptime Kuma', 'url' => 'http://10.0.0.84:3100'],
-						['title' => 'Caddy Proxy', 'url' => 'http://10.0.0.84:3080'],
-						['title' => 'Guacamole', 'url' => 'http://10.0.0.84:8081'],
-						['title' => 'WebODM', 'url' => 'http://10.0.0.84:8001'],
-						['title' => 'OrcaSlicer', 'url' => 'http://10.0.0.84:3030'],
-						['title' => 'ADSB Feeder', 'url' => 'http://10.0.0.84:8087'],
-						['title' => 'MediaMTX', 'url' => 'http://10.0.0.84:8889'],
-						['title' => 'Nextcloud', 'url' => 'http://10.0.0.84:8080'],
-					],
-				],
-				[
-					'title' => 'VPN',
-					'tools' => [
-						[
-							'title' => 'WireGuard',
-							'url' => '',
-							'note' => 'Use the Nextcloud WireGuard app (not managed in Control Tower).',
-						],
-					],
-				],
-			],
-			'tools' => [
-				['title' => 'Portainer', 'url' => 'https://10.0.0.84:9443'],
-				['title' => 'Webmin', 'url' => $baseWebmin],
-				['title' => 'Uptime Kuma', 'url' => 'http://10.0.0.84:3100'],
-				['title' => 'Caddy Proxy', 'url' => 'http://10.0.0.84:3080'],
-				['title' => 'Guacamole', 'url' => 'http://10.0.0.84:8081'],
-				['title' => 'WebODM', 'url' => 'http://10.0.0.84:8001'],
-				['title' => 'OrcaSlicer', 'url' => 'http://10.0.0.84:3030'],
-				['title' => 'ADSB Feeder', 'url' => 'http://10.0.0.84:8087'],
-				['title' => 'MediaMTX', 'url' => 'http://10.0.0.84:8889'],
-				['title' => 'Nextcloud', 'url' => 'http://10.0.0.84:8080'],
-			],
-		]);
+		return new DataResponse($this->endpoints->buildToolsPayload());
 	}
 }

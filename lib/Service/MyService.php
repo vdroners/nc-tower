@@ -4,7 +4,6 @@ namespace OCA\NcTower\Service;
 
 use OCP\IDBConnection;
 use OCA\NcTower\Db\MyRepository;
-use OC\Updater\VersionCheck;
 use OCP\IUserManager;
 use OCP\IConfig;
 use Psr\Log\LoggerInterface;
@@ -16,7 +15,7 @@ class MyService {
     private $logger;
     private $config;
 
-    public function __construct(private VersionCheck $updater, MyRepository $repository, IDBConnection $db, IUserManager $userManager, IConfig $config, LoggerInterface $logger) {
+    public function __construct(MyRepository $repository, IDBConnection $db, IUserManager $userManager, IConfig $config, LoggerInterface $logger) {
         $this->repository = $repository;
         $this->db = $db;
         $this->userManager = $userManager;
@@ -63,7 +62,7 @@ class MyService {
     }
     
     function getFolderSize($dir) {
-		// Timed du — unbounded du hangs on large Nextcloud datadirs (/media/4TB etc).
+		// Timed du — unbounded du hangs on large Nextcloud datadirs.
 		$dir = escapeshellarg($dir);
 		$timeout = 5;
 		$output = shell_exec("timeout {$timeout} du -sb {$dir} 2>/dev/null");
@@ -543,13 +542,14 @@ if ($totalSpace !== false) {
         return $networkInfo;
     }
 
+    /**
+     * Public-API stub — OC\Updater\VersionCheck is private and store-disallowed.
+     * Web updater toggle still comes from system config.
+     */
     public function isupdaterenabled(): array {
-        $data = $this->updater->check();
-        $updaterEnabled = empty($data['autoupdater']) ? false : $data['autoupdater'] === '1';
-
-            return [
+        return [
             'webUpdaterEnabled' => !$this->config->getSystemValue('upgrade.disable-web', false),
-            'updaterEnabled' => $updaterEnabled,
+            'updaterEnabled' => false,
         ];
     }
 }

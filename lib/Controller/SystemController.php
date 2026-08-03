@@ -43,7 +43,6 @@ use OCP\IRequest;
 use Psr\Log\LoggerInterface;
 use OCP\IAppConfig;
 use OCP\App\IAppManager;
-use OC\Updater\VersionCheck;
 use OCP\IUserManager;
 use OCP\IGroupManager;
 use OCP\ServerVersion;
@@ -68,7 +67,6 @@ class SystemController extends Controller {
             IUserManager $userManager, 
             IGroupManager $groupManager, 
             IL10N $l,
-            protected VersionCheck $versionCheck,
             protected ServerVersion $serverVersion,
             private IAppConfig $appConfig
         ) {
@@ -198,20 +196,23 @@ class SystemController extends Controller {
         return strpos($virtDetect, 'none') === false && !empty($virtDetect);
     }
 
-    public function isBehindProxy() {
-        if (isset($_SERVER['HTTP_X_FORWARDED_FOR']) || 
-            isset($_SERVER['HTTP_CLIENT_IP']) || 
-            isset($_SERVER['HTTP_X_REAL_IP'])) {
-            return true;
-        }
-        return false;
+    public function isBehindProxy(): bool {
+        return $this->request->getHeader('X-Forwarded-For') !== ''
+            || $this->request->getHeader('Client-IP') !== ''
+            || $this->request->getHeader('X-Real-IP') !== '';
     }
 
-    public function getServerType() {
-        if (isset($_SERVER['SERVER_SOFTWARE'])) {
-            return $_SERVER['SERVER_SOFTWARE'];
+    public function getServerType(): string {
+        // Prefer identity advertised by a reverse proxy when present.
+        foreach (['X-Powered-By', 'Server', 'Via'] as $header) {
+            $value = $this->request->getHeader($header);
+            if ($value !== '') {
+                return $value;
+            }
         }
-        return 'unknown';
+        // Avoid raw server superglobals (App Store disqualifier). SAPI is enough for display.
+        $sapi = PHP_SAPI;
+        return $sapi !== '' ? ('php-' . $sapi) : 'unknown';
     }
  
     public function systeminfo(): DataResponse {
@@ -303,34 +304,19 @@ class SystemController extends Controller {
         }
     }
     
+    /**
+     * Stub — OC\Updater\VersionCheck is private. Surface installed version only;
+     * operators use Settings → Overview for official update status.
+     */
     public function getSystemStatus(): array {
         $currentVersion = \OCP\Util::getVersion();
 		$currentVersionimplode = implode('.', $currentVersion);
-        $check = $this->versionCheck->check();
-        $update = true;
-        if (!isset($check['version'])) {
-            $update = false;
-            $check['version'] = '';
-        }
-        if (!$this->config->getSystemValueBool('updatechecker', true)) {
-			$update = false;
-		}
-
-		if (\in_array($this->serverVersion->getChannel(), ['daily', 'git'], true)) {
-			$update = false;
-		}
-
-        $newVersion = '';
-        if ($update) {
-            $newVersion = $this->config->getAppValue('core', 'lastupdatedat', '');
-        }
-        $data = [
-                'updateAvailable' => (bool)$update,
-                'updateVersion' => $check['version'],
+        return [
+                'updateAvailable' => false,
+                'updateVersion' => '',
                 'currentVersion' => $currentVersion,
                 'currentVersionimplode' => $currentVersionimplode,
             ];
-        return $data;
     }
 
     public function getlogfile(): array {
@@ -366,32 +352,4 @@ class SystemController extends Controller {
     }
 
 
-    protected function checkCoreUpdate(): void {
-		if (!$this->config->getSystemValueBool('updatechecker', true)) {
-			return;
-		}
-
-		if (\in_array($this->serverVersion->getChannel(), ['daily', 'git'], true)) {
-			return;
-		}
-
-		$status = $this->versionCheck->check();
-		if ($status === false) {
-			$errors = 1 + $this->appConfig->getAppValueInt('update_check_errors', 0);
-			$this->appConfig->setAppValueInt('update_check_errors', $errors);
-
-			if (\in_array($errors, self::CONNECTION_NOTIFICATIONS, true)) {
-				$this->sendErrorNotifications($errors);
-			}
-		} elseif (\is_array($status)) {
-			$this->appConfig->setAppValueInt('update_check_errors', 0);
-			$this->clearErrorNotifications();
-
-			if (isset($status['version'])) {
-				$this->createNotifications('core', $status['version'], $status['versionstring']);
-			}
-		}
-	}
-    
-  
 }

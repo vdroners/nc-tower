@@ -94,33 +94,35 @@ export default {
 	computed: {
 		groups() {
 			const flat = (this.tools.groups || []).flatMap((group) => group.tools || [])
-			const urlOf = (title) => (flat.find((tool) => tool.title === title) || {}).url
+			const urlOf = (title) => (flat.find((tool) => tool.title === title) || {}).url || ''
 			const probe = (key) => this.probes[key] || null
+
+			const filterConfigured = (rows) => rows.filter((row) => row.url || row.note)
 
 			return [
 				{
 					title: 'Absorbed into Control Tower',
 					blurb: 'Tower does these now. The links remain only as a second opinion.',
-					rows: ABSORBED.map(([title, where, key]) => ({
+					rows: filterConfigured(ABSORBED.map(([title, where, key]) => ({
 						title, url: urlOf(title), supersededBy: where, probe: probe(key),
-					})),
+					}))),
 				},
 				{
 					title: 'Break-glass — still needed',
 					blurb: 'What Tower deliberately does not do yet. Each says what it is still for.',
-					rows: BREAK_GLASS.map((row) => ({ ...row, url: urlOf(row.title), probe: probe(row.key) })),
+					rows: filterConfigured(BREAK_GLASS.map((row) => ({ ...row, url: urlOf(row.title), probe: probe(row.key) }))),
 				},
 				{
 					title: 'External applications',
-					blurb: 'Other services on this host, not administration surfaces.',
-					rows: APPS.map(([title, key]) => ({ title, url: urlOf(title), probe: probe(key) })),
+					blurb: 'Other services on this host, not administration surfaces. Configure URLs in Settings → Control Tower.',
+					rows: filterConfigured(APPS.map(([title, key]) => ({ title, url: urlOf(title), probe: probe(key) }))),
 				},
 				{
 					title: 'VPN',
 					blurb: '',
 					rows: [{ title: 'WireGuard', url: '', note: 'Managed in the Nextcloud WireGuard app.' }],
 				},
-			]
+			].filter((group) => group.rows.length > 0)
 		},
 		counts() {
 			const rows = this.groups.flatMap((group) => group.rows)

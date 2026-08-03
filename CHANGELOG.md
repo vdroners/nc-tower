@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.12.0] - 2026-08-03
+
+App Store readiness. Plan: `docs/plans/nc-tower-v1.12-appstore.md`.
+
+### Changed
+- **OCP-only PHP.** Removed private `OC\Installer`, `OC\App\*`, `OC_App`, and
+  `OC\Updater\VersionCheck`. App enable/disable stays on `OCP\App\IAppManager`.
+  In-app App Store update listing/install is stubbed — use Nextcloud Apps.
+  NC update check is stubbed the same way (Settings → Overview remains authoritative).
+  Replaced raw `$_SERVER` with `OCP\IRequest` headers / PHP SAPI
+- **Configurable deep links.** Tools/Services URLs live in admin appconfig with
+  **empty defaults**; unset tiles are hidden. Sidecar base URL is an admin setting
+  defaulting to `http://nc_tower_sidecar:18765` (Docker DNS), with legacy
+  `config.php` `nc_tower_sidecar_url` still honoured
+- **Sidecar packaging.** `sidecar/Dockerfile`, generic `docker-compose.yml`
+  (env-driven, no `/media/4TB` defaults), lab mounts moved to
+  `docker-compose.lab.yml`. `app.py` defaults for compose dirs, disk paths,
+  service targets, and host jobs dir are empty/env/`/ops/jobs`
+- **info.xml** 1.12.0: nested documentation, screenshots, privacy/sidecar
+  disclosure, admin settings registration; Admin Cockpit author credit retained
+
+### Added
+- Admin Settings → Control Tower (sidecar URL + tool URLs)
+- `make appstore` / `appstore-sign`, CI + release workflows
+- `docs/PRIVACY.md`, `docs/plans/nc-tower-v1.12-appstore.md`
+- `make test` runs vitest; `sidecar-up-generic` for the stock compose
+
 ## [1.11.0] - 2026-08-03
 
 Job runner, host updates brought in-house, and the first visualisations.

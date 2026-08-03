@@ -52,12 +52,12 @@ describe('assess — disks', () => {
 		[86, WARN],
 		[96, CRIT],
 	])('disk at %i%% is %s', (used, expected) => {
-		const result = assess({ host: { disks: [{ path: '/media/4TB', used_pct: used }] } })
+		const result = assess({ host: { disks: [{ path: '/data', used_pct: used }] } })
 		expect(result.level).toBe(expected)
 	})
 
 	it('flags an unreadable disk as critical', () => {
-		const result = assess({ host: { disks: [{ path: '/media/6TB', error: 'permission denied' }] } })
+		const result = assess({ host: { disks: [{ path: '/backup', error: 'permission denied' }] } })
 		expect(result.level).toBe(CRIT)
 	})
 })

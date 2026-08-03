@@ -7,8 +7,6 @@
  *
  * @copyright Copyright (c) 2025 Wolfgang Tödt
  *
- * @license GNU AGPL version 3 or any later version
- *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
  * published by the Free Software Foundation, either version 3 of the
@@ -27,342 +25,248 @@ declare(strict_types=1);
 
 namespace OCA\NcTower\Controller;
 
-use OC\App\AppManager;
-use OC\App\AppStore\Bundles\BundleFetcher;
-use OC\App\AppStore\Fetcher\AppDiscoverFetcher;
-use OC\App\AppStore\Fetcher\AppFetcher;
-use OC\App\AppStore\Fetcher\CategoryFetcher;
-use OC\App\AppStore\Version\VersionParser;
-use OC\App\DependencyAnalyzer;
-use OCP\L10N\IFactory;
-
-use OC\Installer;
+use OCA\NcTower\Service\MyService;
+use OCP\App\IAppManager;
 use OCP\AppFramework\Controller;
-use OCP\AppFramework\Http\Attribute\FrontpageRoute;
-use OCP\AppFramework\Http\Attribute\NoAdminRequired;
-use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
-use OCP\IL10N;
-use OCP\IConfig;
-use OCP\AppFramework\Db\TTransactional;
-use OCP\IDBConnection;
-use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\JSONResponse;
-use OCA\NcTower\Service\MyService;
-use OCP\IRequest;
-use Psr\Log\LoggerInterface;
-use OCP\IAppConfig;
-use OCP\App\IAppManager;
-use OCP\Settings\IManager;
-use OCP\IUserManager;
+use OCP\IConfig;
 use OCP\IGroupManager;
+use OCP\IL10N;
+use OCP\IRequest;
+use OCP\IUserManager;
 use OCP\IUserSession;
+use OCP\Settings\IManager;
+use Psr\Log\LoggerInterface;
 
+/**
+ * Apps admin surface using public OCP APIs only.
+ *
+ * App Store install/update requires private Installer APIs that are not in OCP —
+ * those features are stubbed; enable/disable stays available via IAppManager.
+ */
 class AppsController extends Controller {
-    private $myService;
-    private $logger;
-    private $config;
-    private $userManager;
-    private $groupManager;
-    private $l;
-    private IAppManager $appManager;
-    private IUserSession $userSession;
+	private MyService $myService;
+	private LoggerInterface $logger;
+	private IConfig $config;
+	private IUserManager $userManager;
+	private IGroupManager $groupManager;
+	private IL10N $l;
+	private IAppManager $appManager;
+	private IUserSession $userSession;
+	private IManager $settingManager;
 
-    public function __construct(
-            string $appName, 
-            IRequest $request, 
-            MyService $myService, 
-            LoggerInterface $logger, 
-            IConfig $config,
-            IAppManager $appManager,
-            IUserManager $userManager, 
-            IGroupManager $groupManager, 
-            IUserSession $userSession,
-            IL10N $l, 
-            private Installer $installer,
-            private IAppConfig $appConfig,
-            private IManager $settingManager,
-            private IFactory $l10nFactory, //NEU
-            private CategoryFetcher $categoryFetcher, //NEU
-        ) {
-        parent::__construct($appName, $request);
-        $this->myService = $myService;
-        $this->logger = $logger;
-        $this->config = $config;
-        $this->appManager = $appManager;
-        $this->userManager = $userManager;
-        $this->groupManager = $groupManager;
-        $this->settingManager = $settingManager;
-        $this->userSession = $userSession;
-        $this->l = $l;
-    }
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		MyService $myService,
+		LoggerInterface $logger,
+		IConfig $config,
+		IAppManager $appManager,
+		IUserManager $userManager,
+		IGroupManager $groupManager,
+		IUserSession $userSession,
+		IL10N $l,
+		IManager $settingManager,
+	) {
+		parent::__construct($appName, $request);
+		$this->myService = $myService;
+		$this->logger = $logger;
+		$this->config = $config;
+		$this->appManager = $appManager;
+		$this->userManager = $userManager;
+		$this->groupManager = $groupManager;
+		$this->settingManager = $settingManager;
+		$this->userSession = $userSession;
+		$this->l = $l;
+	}
 
-    
-    
-    public function appsinfo(): DataResponse {
-        try {
-            $thisapps = $this->appManager->getAllAppsInAppsFolders();
-            sort($thisapps);
-            $ncinfo = $this->myService->getNCInfo();
-            $parts = explode(".", $ncinfo['nc_version']);
-            $version = (int)$parts[0];
-            if($version < 32) {
-                $thisappsenabled = $this->appManager->getEnabledAppsForUser($this->userSession->getUser());
-            }
-            else {
-                $thisappsenabled = $this->appManager->getEnabledApps();
-            }
-            $thisappsdisabled = array_diff($thisapps, $thisappsenabled);
-            $thisappsdisabledfull = $this->appsfull($thisappsdisabled);
-            $thisappsenabledfull = $this->appsfull($thisappsenabled);
-            $getadminsections = $this->settingManager->getAdminSections();
-            $getpersonalsections = $this->settingManager->getPersonalSections();
-            $adminsections = [];
-            $adminsectionsappname = [];
-            $adminsectionsappicon = [];
-            $i = 0;
-            foreach ($getadminsections as $dummy) {
-                foreach ($dummy as $adminsection) {
-                    if ($adminsection->getID() != 'additional') {				
-                        $adminsections[$i] = $adminsection->getID();
-                        $adminsectionsappname[$i] = $adminsection->getName() ?: $adminsection->getID();
-                        $adminsectionsappicon[$i] = $adminsection->getIcon();
-                }
-                    $i++;
-                }
-            }
-            $personalsections = [];
-            $personalsectionsappname = [];
-            $personalsectionsappicon = [];
-            $i = 0;
-            foreach ($getpersonalsections as $dummy) {
-                foreach ($dummy as $personalsection) {
-                    if ($personalsection->getID() != 'calendar') {
-                        $personalsections[$i] = $personalsection->getID();
-                        $personalsectionsappname[$i] = $personalsection->getName() ?: $personalsection->getID();
-                        $personalsectionsappicon[$i] = $personalsection->getIcon();
-                    }
-                    $i++;
-                }
-            }
-
-            return new DataResponse([
-                'adminsections' => $adminsections,
-                'adminsectionsappname' => $adminsectionsappname,
-                'adminsectionsappicon' => $adminsectionsappicon,
-                'personalsections' => $personalsections,
-                'personalsectionsappname' => $personalsectionsappname,
-                'personalsectionsappicon' => $personalsectionsappicon,                
-                'allapps' => count($thisapps),
-                'appsenabled' => count($thisappsenabled),
-                'thisapps' => $thisapps,
-                'thisappsenabled' => $thisappsenabled,
-                'thisappsdisabled' => $thisappsdisabled,
-                'thisappsdisabledfull' => $thisappsdisabledfull,
-                'thisappsenabledfull' => $thisappsenabledfull,               
-            ]);
-
-        } catch (\Throwable $e) {
-            $this->logger->error(
-                'NcTower193: FATAL ERROR or EXCEPTION in DataController->appsinfo: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'nc_tower']
-            );
-            return new DataResponse([
-                'db' => -1,
-            ], 500);
-        }
-    }
-    
-    public function appsfull($apps) {
-        $i = 0;
-        $wtarr = [];
-
-        foreach($apps as $appid){
-
-            $icon = $this->appManager->getAppIcon($appid, false);
-
-            $wtarr[$i]["appid"] = $appid;
-            $appinfo = $this->appManager->getAppInfo($appid, false, "en_GB");
-            if ($appinfo === null) {
-                $obja = new \stdClass();
-                $obja->appid = $appid;
-                $obja->id = $i;
-                $obja->name = $appid;
-                $appinfo = $obja;
-            }
-            $wtarr[$i]["name"] = $appinfo;
-            $wtarr[$i]["id"] = $i;
-            $wtarr[$i]["icon"] = $icon ? $icon : $this->appManager->getAppWebPath('nc_tower') . "/img/dummy.svg";
-            
-            $wtarr[$i]["version"] = $this->appManager->getAppVersion($appid, true);
-            $wtarr[$i]["shipped"] = $this->appManager->isShipped($appid);
-            $i++;
-            
-}
-
-		  return $wtarr;
-    }
-    
-    public function disableapp($who) {
-        try {
-            if ($this->appManager->isInstalled($who)) { 
-                $this->appManager->disableApp($who, false);
-                return 'true';                
-            }
-            else { 
-                return 'false';
-            }
-        } catch (\Throwable $e) {
-            $this->logger->error(
-                'NcTower235: FATAL ERROR or EXCEPTION in DataController->disableapp: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'nc_tower']
-            );
-            return 'false';
-        }
-    }
-    
-    public function enableapp($who) {
-        
-            $this->appManager->enableApp($who, false);
-                return 'true';                
-            
-    }
-    
-    public function uuupdateapp($who) {
-        
-        try {
-            if ($this->appManager->isInstalled($who)) { 
-                $this->installer->updateAppstoreApp($who, false);
-                return 'true';                
-            }
-            else { 
-                return 'false';
-            }
-        } catch (\Throwable $e) {
-            $this->logger->error(
-                'NcTower261: FATAL ERROR or EXCEPTION in DataController->disableapp: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'nc_tower']
-            );
-            return 'false';
-        }
-    }
-    
-    public function updateapp(string $who): JSONResponse {
-        set_time_limit(300);
-		$appId = $this->appManager->cleanAppId($who);
-
-		$this->config->setSystemValue('maintenance', true);
+	public function appsinfo(): DataResponse {
 		try {
-			$result = $this->installer->updateAppstoreApp($appId);
-			$this->config->setSystemValue('maintenance', false);
-		} catch (\Exception $ex) {
-			$this->config->setSystemValue('maintenance', false);
-			return new JSONResponse(['data' => ['message' => $ex->getMessage()]], Http::STATUS_INTERNAL_SERVER_ERROR);
-		}
-
-		if ($result !== false) {
-			return new JSONResponse(['data' => ['appid' => $appId]]);
-		}
-		else {
-            $this->logger->error('Could not update app. ');
-		return new JSONResponse(['data' => ['message' => $this->l10n->t('Could not update app.')]], Http::STATUS_INTERNAL_SERVER_ERROR);
-        }
-	}
-    
-    //#[NoAdminRequired]
-    //#[NoCSRFRequired]
-    public function getAppsWithUpdates(): DataResponse {
-        $ncinfo = $this->myService->getNCInfo();
-        $parts = explode(".", $ncinfo['nc_version']);
-        $version = (int)$parts[0];
-        if($version < 32) {
-            $enabledapps = $this->appManager->getEnabledAppsForUser($this->userSession->getUser());
-        }
-        else {
-            $enabledapps = $this->appManager->getEnabledApps();
-        }
-		$appClass = new \OC_App();
-		$apps = $appClass->listAllApps();
-		foreach ($apps as $key => &$app) {
-			$newVersion = $this->installer->isUpdateAvailable($app['id']);
-			if (($newVersion === false) || (!in_array($app['id'], $enabledapps))) {
-				unset($apps[$key]);
+			$thisapps = $this->appManager->getAllAppsInAppsFolders();
+			sort($thisapps);
+			$ncinfo = $this->myService->getNCInfo();
+			$parts = explode('.', $ncinfo['nc_version']);
+			$version = (int)$parts[0];
+			if ($version < 32) {
+				$thisappsenabled = $this->appManager->getEnabledAppsForUser($this->userSession->getUser());
+			} else {
+				$thisappsenabled = $this->appManager->getEnabledApps();
 			}
-			else {
-                $icon = $this->appManager->getAppIcon($app['id'], false);
-                $app["icon"] = $icon ? $icon : $this->appManager->getAppWebPath('nc_tower') . "/img/dummy.svg";
-                $app['updateState'] = 'idle';
-                $app['updateVersion'] = $newVersion;
-            }
+			$thisappsdisabled = array_diff($thisapps, $thisappsenabled);
+			$thisappsdisabledfull = $this->appsfull($thisappsdisabled);
+			$thisappsenabledfull = $this->appsfull($thisappsenabled);
+			$getadminsections = $this->settingManager->getAdminSections();
+			$getpersonalsections = $this->settingManager->getPersonalSections();
+			$adminsections = [];
+			$adminsectionsappname = [];
+			$adminsectionsappicon = [];
+			$i = 0;
+			foreach ($getadminsections as $dummy) {
+				foreach ($dummy as $adminsection) {
+					if ($adminsection->getID() != 'additional') {
+						$adminsections[$i] = $adminsection->getID();
+						$adminsectionsappname[$i] = $adminsection->getName() ?: $adminsection->getID();
+						$adminsectionsappicon[$i] = $adminsection->getIcon();
+					}
+					$i++;
+				}
+			}
+			$personalsections = [];
+			$personalsectionsappname = [];
+			$personalsectionsappicon = [];
+			$i = 0;
+			foreach ($getpersonalsections as $dummy) {
+				foreach ($dummy as $personalsection) {
+					if ($personalsection->getID() != 'calendar') {
+						$personalsections[$i] = $personalsection->getID();
+						$personalsectionsappname[$i] = $personalsection->getName() ?: $personalsection->getID();
+						$personalsectionsappicon[$i] = $personalsection->getIcon();
+					}
+					$i++;
+				}
+			}
+
+			return new DataResponse([
+				'adminsections' => $adminsections,
+				'adminsectionsappname' => $adminsectionsappname,
+				'adminsectionsappicon' => $adminsectionsappicon,
+				'personalsections' => $personalsections,
+				'personalsectionsappname' => $personalsectionsappname,
+				'personalsectionsappicon' => $personalsectionsappicon,
+				'allapps' => count($thisapps),
+				'appsenabled' => count($thisappsenabled),
+				'thisapps' => $thisapps,
+				'thisappsenabled' => $thisappsenabled,
+				'thisappsdisabled' => $thisappsdisabled,
+				'thisappsdisabledfull' => $thisappsdisabledfull,
+				'thisappsenabledfull' => $thisappsenabledfull,
+			]);
+		} catch (\Throwable $e) {
+			$this->logger->error(
+				'NcTower: FATAL ERROR or EXCEPTION in AppsController->appsinfo: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+				['app' => 'nc_tower']
+			);
+			return new DataResponse([
+				'db' => -1,
+			], 500);
 		}
-		
-		
-		
+	}
+
+	/**
+	 * @param list<string> $apps
+	 * @return list<array<string,mixed>>
+	 */
+	public function appsfull($apps): array {
+		$i = 0;
+		$wtarr = [];
+
+		foreach ($apps as $appid) {
+			$icon = $this->appManager->getAppIcon($appid, false);
+
+			$wtarr[$i]['appid'] = $appid;
+			$appinfo = $this->appManager->getAppInfo($appid, false, 'en_GB');
+			if ($appinfo === null) {
+				$obja = new \stdClass();
+				$obja->appid = $appid;
+				$obja->id = $i;
+				$obja->name = $appid;
+				$appinfo = $obja;
+			}
+			$wtarr[$i]['name'] = $appinfo;
+			$wtarr[$i]['id'] = $i;
+			$wtarr[$i]['icon'] = $icon ? $icon : $this->appManager->getAppWebPath('nc_tower') . '/img/dummy.svg';
+
+			$wtarr[$i]['version'] = $this->appManager->getAppVersion($appid, true);
+			$wtarr[$i]['shipped'] = $this->appManager->isShipped($appid);
+			$i++;
+		}
+
+		return $wtarr;
+	}
+
+	public function disableapp($who) {
+		try {
+			if ($this->appManager->isInstalled($who)) {
+				$this->appManager->disableApp($who, false);
+				return 'true';
+			}
+			return 'false';
+		} catch (\Throwable $e) {
+			$this->logger->error(
+				'NcTower: FATAL ERROR or EXCEPTION in AppsController->disableapp: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
+				['app' => 'nc_tower']
+			);
+			return 'false';
+		}
+	}
+
+	public function enableapp($who) {
+		$this->appManager->enableApp($who, false);
+		return 'true';
+	}
+
+	/**
+	 * App Store updates require private OC\Installer — not available via OCP.
+	 */
+	public function updateapp(string $who): JSONResponse {
+		return new JSONResponse([
+			'data' => [
+				'message' => $this->l->t('In-app updates are not available. Use Nextcloud Apps management.'),
+				'appid' => $who,
+				'available' => false,
+			],
+		], Http::STATUS_NOT_IMPLEMENTED);
+	}
+
+	/**
+	 * Listing pending App Store updates requires private Installer APIs.
+	 */
+	public function getAppsWithUpdates(): DataResponse {
 		return new DataResponse([
-            'apps' => array_values($apps),
-            'appscount' => count($apps),
-        ]);
+			'apps' => [],
+			'appscount' => 0,
+			'available' => false,
+			'message' => $this->l->t('App update listing is not available via public APIs. Use Nextcloud Apps management.'),
+		]);
 	}
-	
-	
-	
+
 	public function listCategories(): JSONResponse {
-		return new JSONResponse($this->getAllCategories());
+		return new JSONResponse([]);
 	}
 
-	private function getAllCategories() {
-		$currentLanguage = substr($this->l10nFactory->findLanguage(), 0, 2);
-
-		$categories = $this->categoryFetcher->get();
-		return array_map(fn ($category) => [
-			'id' => $category['id'],
-			'displayName' => $category['translations'][$currentLanguage]['name'] ?? $category['translations']['en']['name'],
-		], $categories);
-	}
-	
-	//#[NoCSRFRequired]
 	public function isnoti(): DataResponse {
-        $ncinfo = $this->myService->getNCInfo();
-        $parts = explode(".", $ncinfo['nc_version']);
-        $version = (int)$parts[0];
-        if($version < 32) {
-            $enabledapps = $this->appManager->getEnabledAppsForUser($this->userSession->getUser());
-        }
-        else {
-            $enabledapps = $this->appManager->getEnabledApps();
-        }
-            
-            if (in_array('notifications', $enabledapps)) {
-                $isnoti = 'true';                
-            }
-            else { $isnoti = 'false'; }
-            
-            return new DataResponse([
-            'isnoti' => $isnoti,
-        ]);
-        
-    }
-    
-    public function islogcleaner(): DataResponse {
-        $ncinfo = $this->myService->getNCInfo();
-        $parts = explode(".", $ncinfo['nc_version']);
-        $version = (int)$parts[0];
-        if($version < 32) {
-            $enabledapps = $this->appManager->getEnabledAppsForUser($this->userSession->getUser());
-        }
-        else {
-            $enabledapps = $this->appManager->getEnabledApps();
-        }
-            
-            if (in_array('logcleaner', $enabledapps)) {
-                $islogcleaner = 'true';                
-            }
-            else { $islogcleaner = 'false'; }
-            
-            return new DataResponse([
-            'islogcleaner' => $islogcleaner,
-        ]);
-        
-    }
-  
+		$ncinfo = $this->myService->getNCInfo();
+		$parts = explode('.', $ncinfo['nc_version']);
+		$version = (int)$parts[0];
+		if ($version < 32) {
+			$enabledapps = $this->appManager->getEnabledAppsForUser($this->userSession->getUser());
+		} else {
+			$enabledapps = $this->appManager->getEnabledApps();
+		}
+
+		$isnoti = in_array('notifications', $enabledapps, true) ? 'true' : 'false';
+
+		return new DataResponse([
+			'isnoti' => $isnoti,
+		]);
+	}
+
+	public function islogcleaner(): DataResponse {
+		$ncinfo = $this->myService->getNCInfo();
+		$parts = explode('.', $ncinfo['nc_version']);
+		$version = (int)$parts[0];
+		if ($version < 32) {
+			$enabledapps = $this->appManager->getEnabledAppsForUser($this->userSession->getUser());
+		} else {
+			$enabledapps = $this->appManager->getEnabledApps();
+		}
+
+		$islogcleaner = in_array('logcleaner', $enabledapps, true) ? 'true' : 'false';
+
+		return new DataResponse([
+			'islogcleaner' => $islogcleaner,
+		]);
+	}
 }

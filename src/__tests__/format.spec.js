@@ -49,10 +49,10 @@ describe('addresses', () => {
 			name: 'eno1',
 			addresses: [
 				{ family: 'inet6', address: 'fe80::1', prefixlen: 64 },
-				{ family: 'inet', address: '10.0.0.84', prefixlen: 24 },
+				{ family: 'inet', address: '192.168.1.50', prefixlen: 24 },
 			],
 		}
-		expect(fmt.addresses(iface)).toBe('10.0.0.84/24')
+		expect(fmt.addresses(iface)).toBe('192.168.1.50/24')
 	})
 
 	it('falls back to all addresses when there is no IPv4', () => {

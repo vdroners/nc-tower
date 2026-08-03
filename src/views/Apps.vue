@@ -131,8 +131,11 @@ export default {
 	},
 	computed: {
 		updateSummary() {
+			if (this.updates.available === false && this.updates.message) {
+				return this.updates.message
+			}
 			const count = (this.updates.apps || []).length
-			return count ? `${count} update(s) available` : 'up to date'
+			return count ? `${count} update(s) available` : 'up to date — use Nextcloud Apps for store updates'
 		},
 	},
 	created() {

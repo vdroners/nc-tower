@@ -32,6 +32,7 @@ return [
     ['name' => 'User#notifyuser', 'url' => '/notifyuser', 'verb' => 'POST'],
     ['name' => 'User#notifygroup', 'url' => '/notifygroup', 'verb' => 'POST'],
     ['name' => 'User#usercount', 'url' => '/usercount', 'verb' => 'GET'],
+    ['name' => 'admin#saveSettings', 'url' => '/api/admin/settings', 'verb' => 'PUT'],
     ['name' => 'tower#health', 'url' => '/tower/health', 'verb' => 'GET'],
     ['name' => 'tower#hostSummary', 'url' => '/tower/host', 'verb' => 'GET'],
     ['name' => 'tower#hostGpu', 'url' => '/tower/gpu', 'verb' => 'GET'],
