@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.12.3] - 2026-08-03
+
+### Fixed
+- App icon redrawn as single-ink `currentColor` radio-tower silhouette for Nextcloud nav/Settings tinting
+- Licence string normalized to `AGPL-3.0-or-later`
+- Navigation gained unique `<order>83</order>`; dropped nonstandard nav `<id>`/`<type>`
+
+
 ## [1.12.2] - 2026-08-03
 
 ### Fixed
