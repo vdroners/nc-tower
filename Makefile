@@ -98,9 +98,11 @@ appstore: build
 	rm -rf "$(STAGING)"
 	mkdir -p "$(STAGING)"
 	rsync -a --delete \
-		--exclude node_modules --exclude .git --exclude '*.map' \
+		--exclude node_modules --exclude .git --exclude .github \
+		--exclude src --exclude tests --exclude .cursor --exclude '*.map' \
 		--exclude sidecar/.env --exclude sidecar/__pycache__ \
-		--exclude .vitest-gate-stamp \
+		--exclude .vitest-gate-stamp --exclude scripts --exclude tools \
+		--exclude webpack.config.js --exclude vitest.config.cjs \
 		"$(ROOT)" "$(STAGING)/"
 	rm -rf "$(STAGING)/node_modules"
 	tar -czf "$(TARBALL)" -C /tmp "$(APP_ID)-$(VERSION)"
