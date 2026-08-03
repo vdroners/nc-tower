@@ -37,21 +37,46 @@
 			</DataTable>
 		</Section>
 
-		<Section id="host.packages"
-			title="Package updates"
-			:summary="packageSummary"
-			:severity="packages.packages && packages.packages.length ? 'warn' : 'ok'"
-			:loading="loading.packages"
-			:error="errors.packages"
-			@refresh="refresh('packages')">
-			<NcNoteCard v-if="packages.unavailable" type="warning">Unavailable: {{ packages.reason || packages.error }}</NcNoteCard>
-			<DataTable v-else
-				:columns="packageColumns"
-				:rows="packages.packages || []"
-				row-key="name"
-				default-sort="name"
-				empty-text="Everything up to date" />
-			<p class="nc-tower-muted">Applying updates stays in Webmin → Software Packages.</p>
+		<Section id="host.updates"
+			title="Updates"
+			:summary="updateSummary"
+			:severity="updateSeverity"
+			:loading="loading.updates"
+			:error="errors.updates"
+			default-open
+			@refresh="refresh('updates')">
+			<NcNoteCard v-if="updates.unavailable" type="warning">apt is not reachable from the sidecar.</NcNoteCard>
+			<template v-else>
+				<NcNoteCard v-if="updates.reboot_required" type="error">
+					A reboot is required{{ updates.reboot_packages.length ? ` (${updates.reboot_packages.join(', ')})` : '' }}.
+					Control Tower never reboots the host — do it deliberately.
+				</NcNoteCard>
+				<NcNoteCard v-if="(updates.restarts_docker || []).length" type="warning">
+					{{ updates.restarts_docker.join(', ') }} will restart the Docker daemon, bouncing
+					<strong>every container on this host</strong> — including this app's sidecar. The
+					upgrade runs detached under the host's systemd so it survives that.
+				</NcNoteCard>
+
+				<DataTable :columns="packageColumns"
+					:rows="updates.packages || []"
+					row-key="name"
+					default-sort="name"
+					empty-text="Everything up to date" />
+
+				<div class="nc-tower-toolbar">
+					<NcButton type="secondary" :disabled="jobBusy" @click="startUpdate('apt-dry-run')">
+						<template #icon><NcTowerIcon name="search" :size="18" /></template>
+						Dry run
+					</NcButton>
+					<NcButton type="error"
+						:disabled="jobBusy || !(updates.packages || []).length"
+						@click="askUpdate">
+						<template #icon><NcTowerIcon name="download" :size="18" /></template>
+						Install {{ (updates.packages || []).length }} update(s)
+					</NcButton>
+				</div>
+				<JobPanel :job="job" @dismiss="job = null" />
+			</template>
 		</Section>
 
 		<Section id="host.proc"
@@ -120,6 +145,24 @@
 			<p class="nc-tower-muted">Editing cron stays in Webmin.</p>
 		</Section>
 
+		<Section id="host.load"
+			title="Memory trend"
+			:summary="historySummary"
+			:loading="loading.history"
+			:error="errors.history"
+			@refresh="refresh('history')">
+			<TowerChart :datasets="historyDatasets"
+				:height="200"
+				y-suffix="%"
+				:y-max="100"
+				time-axis
+				show-legend
+				title="Memory and swap" />
+			<p class="nc-tower-muted">
+				Recorded by the host every 15 minutes ({{ (history.samples || []).length }} samples shown).
+			</p>
+		</Section>
+
 		<Section id="host.net"
 			title="Network"
 			:summary="ifaceSummary"
@@ -153,12 +196,15 @@ import NcCheckboxRadioSwitch from '@nextcloud/vue/dist/Components/NcCheckboxRadi
 import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
 
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import JobPanel from '../components/JobPanel.vue'
+import TowerChart from '../components/TowerChart.vue'
 import NcTowerIcon from '../components/NcTowerIcon.vue'
 import DataTable from '../components/DataTable.vue'
 import Section from '../components/Section.vue'
 import UsageBar from '../components/UsageBar.vue'
 
-import { get, post } from '../services/api.js'
+import { get, post as postJson } from '../services/api.js'
+import { runJob } from '../services/jobs.js'
 import fmt from '../services/format.js'
 import Poller from '../services/poll.js'
 
@@ -171,12 +217,16 @@ const CONTAINER_IFACE = /^(veth|br-|docker|virbr)/
 
 export default {
 	name: 'Host',
-	components: { ConfirmDialog, DataTable, NcTowerIcon, Section, UsageBar, NcButton, NcCheckboxRadioSwitch, NcNoteCard },
+	components: { ConfirmDialog, DataTable, JobPanel, NcTowerIcon, Section, TowerChart, UsageBar, NcButton, NcCheckboxRadioSwitch, NcNoteCard },
 	data() {
 		return {
 			fmt,
 			mounts: {},
 			packages: {},
+			updates: {},
+			history: {},
+			job: null,
+			jobBusy: false,
 			proc: {},
 			systemd: {},
 			cron: {},
@@ -257,9 +307,33 @@ export default {
 			const total = (this.net.ifaces || []).length
 			return shown === total ? `${total} interface(s)` : `${shown} of ${total} interface(s)`
 		},
-		packageSummary() {
-			const count = (this.packages.packages || []).length
-			return count ? `${count} upgradable` : 'up to date'
+		updateSummary() {
+			const count = (this.updates.packages || []).length
+			if (this.updates.reboot_required) {
+				return `${count} pending · reboot required`
+			}
+			return count ? `${count} update(s) pending` : 'up to date'
+		},
+		updateSeverity() {
+			if (this.updates.reboot_required) {
+				return 'crit'
+			}
+			return (this.updates.packages || []).length ? 'warn' : 'ok'
+		},
+		historySummary() {
+			const samples = this.history.samples || []
+			if (!samples.length) {
+				return ''
+			}
+			return `latest ${samples[samples.length - 1].mem_pct}% memory used`
+		},
+		historyDatasets() {
+			const samples = this.history.samples || []
+			const at = (row) => new Date(row.ts).getTime()
+			return [
+				{ label: 'Memory %', data: samples.map((r) => ({ x: at(r), y: r.mem_pct })), fill: true },
+				{ label: 'Swap %', data: samples.map((r) => ({ x: at(r), y: r.swap_pct })) },
+			]
 		},
 		systemdSummary() {
 			const units = this.systemd.units || []
@@ -279,7 +353,8 @@ export default {
 		p.add('net', () => this.fetch('net', '/tower/net'), 60000)
 		p.add('mounts', () => this.fetch('mounts', '/tower/mounts'), 60000)
 		p.add('cron', () => this.fetch('cron', '/tower/cron'), 300000)
-		p.add('packages', () => this.fetch('packages', '/tower/packages'), 300000)
+		p.add('updates', () => this.fetch('updates', '/tower/updates'), 300000)
+		p.add('history', () => this.fetch('history', '/tower/history?limit=900'), 300000)
 		p.start()
 	},
 	beforeDestroy() {
@@ -304,6 +379,39 @@ export default {
 				this.$set(this.loading, key, false)
 			}
 		},
+		askUpdate() {
+			const docker = (this.updates.restarts_docker || []).length
+			this.confirm = {
+				open: true,
+				title: 'Install host updates',
+				message: docker
+					? `Install ${(this.updates.packages || []).length} update(s)? This restarts the Docker daemon and every container on this host.`
+					: `Install ${(this.updates.packages || []).length} update(s) on the host?`,
+				confirmLabel: 'Install updates',
+				phrase: 'UPDATE',
+				danger: true,
+			}
+			this.pendingAction = () => this.startUpdate('apt-upgrade')
+		},
+		async startUpdate(kind) {
+			this.jobBusy = true
+			this.job = null
+			try {
+				const done = await runJob(kind, {}, (job) => {
+					this.job = job
+				})
+				if (done.status === 'done') {
+					showSuccess(kind === 'apt-upgrade' ? 'Updates installed' : 'Dry run finished')
+				} else {
+					showError(`${kind} failed (exit ${done.exit})`)
+				}
+			} catch (error) {
+				showError(error.message)
+			} finally {
+				this.jobBusy = false
+				await this.poller.refresh('updates')
+			}
+		},
 		askRestart(unit) {
 			this.confirm = {
 				open: true,
@@ -325,7 +433,7 @@ export default {
 		},
 		async restart(unit) {
 			try {
-				const result = await post('/tower/systemd/restart', { unit })
+				const result = await postJson('/tower/systemd/restart', { unit })
 				if (result.ok === false) {
 					showError(result.error || result.stderr || 'Restart failed')
 				} else {

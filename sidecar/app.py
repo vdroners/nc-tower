@@ -1457,6 +1457,301 @@ def host_systemd_restart(body: dict[str, Any]) -> dict[str, Any]:
     return {"ok": result["exit"] == 0, "unit": unit, **result}
 
 
+# --------------------------------------------------------------------------
+# Job runner
+# --------------------------------------------------------------------------
+#
+# Long operations used to run inside one synchronous HTTP request, behind a
+# 130 s PHP proxy timeout: the browser gave up while the work carried on, so the
+# UI reported failure for operations that had succeeded.
+#
+# Worse, `apt upgrade` on this host would restart dockerd — every pending update
+# is docker-ce — which kills the sidecar container *mid-request*. So jobs are
+# handed to the host's systemd and their state lives on disk under /ops/jobs,
+# visible to both sides. A job therefore survives the sidecar dying, which is
+# exactly what an update must do.
+
+JOBS_DIR = OPS_ROOT / "jobs"
+_JOB_ID_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z-]+-[0-9a-f]{6}$")
+
+
+def _job_paths(job_id: str) -> tuple[Path, Path, Path]:
+    return (JOBS_DIR / f"{job_id}.json", JOBS_DIR / f"{job_id}.log", JOBS_DIR / f"{job_id}.rc")
+
+
+def _job_write(job_id: str, payload: dict[str, Any]) -> None:
+    state, _, _ = _job_paths(job_id)
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _job_read(job_id: str) -> dict[str, Any] | None:
+    state, log, rc = _job_paths(job_id)
+    if not state.is_file():
+        return None
+    try:
+        payload = json.loads(state.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    # The exit code file is the completion signal: systemd owns the process, so
+    # the sidecar cannot wait() on it and must not guess from the log.
+    if payload.get("status") == "running" and rc.is_file():
+        code = (rc.read_text(encoding="utf-8").strip() or "-1")
+        try:
+            payload["exit"] = int(code)
+        except ValueError:
+            payload["exit"] = -1
+        payload["status"] = "done" if payload["exit"] == 0 else "failed"
+        payload["finished"] = rc.stat().st_mtime
+        _job_write(job_id, payload)
+    payload["log"] = _read_text(log)[-200_000:]
+    payload["log_bytes"] = log.stat().st_size if log.is_file() else 0
+    return payload
+
+
+# kind -> argv template. Nothing an operator types ever reaches these; the only
+# variable parts are values the caller has already validated against an
+# allowlist (compose file resolved under COMPOSE_DIRS, image against
+# IMAGE_PULL_ALLOW).
+def _job_argv(kind: str, body: dict[str, Any]) -> tuple[list[str] | None, str | None]:
+    if kind == "apt-upgrade":
+        apt = "/usr/bin/apt-get"
+        return ([apt, "-y", "-o", "Dpkg::Options::=--force-confold", "upgrade"], None)
+    if kind == "apt-dry-run":
+        return (["/usr/bin/apt-get", "-s", "upgrade"], None)
+    if kind == "backup":
+        try:
+            script = Path(BACKUP_SCRIPT).resolve(strict=True)
+            script.relative_to((OPS_ROOT / "bin").resolve(strict=True))
+        except (OSError, ValueError):
+            return (None, "backup_script_outside_ops_bin_or_missing")
+        return ([str(script)], None)
+    if kind == "image-pull":
+        image = body.get("image")
+        if not isinstance(image, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./:@-]{0,254}", image):
+            return (None, "invalid_image")
+        if not _image_allowed(image):
+            return (None, "forbidden")
+        return ([_docker_bin(), "pull", image], None)
+    if kind == "stack-action":
+        action = str(body.get("action") or "")
+        commands = {
+            "up": ["up", "-d"],
+            "down": ["down"],
+            "restart": ["restart"],
+            "pull": ["pull"],
+            "rebuild": ["up", "-d", "--build"],
+        }
+        if action not in commands:
+            return (None, "invalid_action")
+        compose_file = _resolve_compose_file(str(body.get("file") or ""))
+        if compose_file is None:
+            return (None, "forbidden_or_missing_file")
+        return ([_docker_bin(), "compose", "-f", str(compose_file), *commands[action]], None)
+    return (None, "unknown_kind")
+
+
+def job_start(kind: str, body: dict[str, Any]) -> dict[str, Any]:
+    argv, error = _job_argv(kind, body)
+    if argv is None:
+        audit(f"job {kind} rejected={error}")
+        return {"ok": False, "error": error, "http": 400 if error != "forbidden" else 403}
+
+    nsenter = _nsenter_bin()
+    if not nsenter:
+        return {"ok": False, "error": "nsenter_missing", "http": 503}
+
+    job_id = f"{time.strftime('%Y%m%d-%H%M%S', time.gmtime())}-{kind}-{os.urandom(3).hex()}"
+    state, log, rc = _job_paths(job_id)
+    JOBS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Host-side paths: the sidecar sees /ops, systemd on the host sees the real
+    # directory the volume comes from.
+    host_jobs = _env("HOST_JOBS_DIR", "/media/4TB/ops/jobs", "NC_TOWER_HOST_JOBS_DIR")
+    host_log = f"{host_jobs}/{job_id}.log"
+    host_rc = f"{host_jobs}/{job_id}.rc"
+    inner = " ".join(shlex.quote(part) for part in argv)
+    script = f"{inner} > {shlex.quote(host_log)} 2>&1; echo $? > {shlex.quote(host_rc)}"
+
+    launch = [
+        nsenter, "--mount=/proc/1/ns/mnt", "--",
+        "/usr/bin/systemd-run", f"--unit=nc-tower-{job_id}", "--collect",
+        "/bin/sh", "-c", script,
+    ]
+    _job_write(job_id, {
+        "id": job_id,
+        "kind": kind,
+        "argv": argv,
+        "status": "running",
+        "started": time.time(),
+        "exit": None,
+    })
+    log.touch(exist_ok=True)
+    result = _run(launch, timeout=30)
+    audit(f"job start kind={kind} id={job_id} launch_exit={result['exit']}")
+    if result["exit"] != 0:
+        _job_write(job_id, {
+            "id": job_id, "kind": kind, "argv": argv, "status": "failed",
+            "started": time.time(), "exit": result["exit"],
+            "error": result["stderr"] or "systemd_run_failed",
+        })
+        return {"ok": False, "error": "systemd_run_failed", "detail": result["stderr"], "id": job_id}
+    return {"ok": True, "id": job_id, "kind": kind, "status": "running"}
+
+
+def job_list() -> dict[str, Any]:
+    if not JOBS_DIR.is_dir():
+        return {"ok": True, "jobs": []}
+    jobs = []
+    for state in sorted(JOBS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[:40]:
+        payload = _job_read(state.stem)
+        if payload:
+            payload.pop("log", None)
+            jobs.append(payload)
+    return {"ok": True, "jobs": jobs, "ts": time.time()}
+
+
+def job_get(job_id: str) -> dict[str, Any]:
+    if not _JOB_ID_RE.fullmatch(job_id):
+        return {"ok": False, "error": "invalid_job_id", "http": 400}
+    payload = _job_read(job_id)
+    if payload is None:
+        return {"ok": False, "error": "not_found", "http": 404}
+    return {"ok": True, **payload}
+
+
+def host_updates() -> dict[str, Any]:
+    """Pending host updates plus the two facts that decide how risky applying them is."""
+    packages = host_packages()
+    pending = [row for row in packages.get("packages", []) if row.get("name")]
+    # Upgrading docker restarts dockerd, which bounces every container on the
+    # box — including this sidecar. The UI has to say so before anyone clicks.
+    restarts_docker = [row["name"] for row in pending if row["name"].startswith("docker")]
+    nsenter = _nsenter_bin()
+    reboot_required = False
+    reboot_packages: list[str] = []
+    if nsenter:
+        check = _run([nsenter, "--mount=/proc/1/ns/mnt", "--", "/bin/cat", "/var/run/reboot-required.pkgs"], timeout=8)
+        reboot_required = check["exit"] == 0
+        if reboot_required:
+            reboot_packages = [line.strip() for line in check["stdout"].splitlines() if line.strip()]
+    return {
+        "ok": True,
+        "unavailable": packages.get("unavailable", False),
+        "packages": pending,
+        "count": len(pending),
+        "restarts_docker": restarts_docker,
+        "reboot_required": reboot_required,
+        "reboot_packages": sorted(set(reboot_packages)),
+        "ts": time.time(),
+    }
+
+
+def host_history(limit: int = 900) -> dict[str, Any]:
+    """Memory/swap history.
+
+    The host already records this every 15 minutes; reading the existing file
+    beats standing up a second collector that would disagree with the first.
+    """
+    path = OPS_ROOT / "state" / "memory-trend.jsonl"
+    if not path.is_file():
+        return {"ok": True, "samples": [], "source": str(path), "unavailable": True}
+    samples = []
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as stream:
+            lines = stream.readlines()[-max(1, min(limit, 5000)):]
+    except OSError as exc:
+        return {"ok": False, "error": str(exc), "samples": []}
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict) and row.get("ts"):
+            samples.append(row)
+    return {"ok": True, "samples": samples, "source": str(path), "ts": time.time()}
+
+
+_INBOX_STAMP_RE = re.compile(r"-(\d{8})-(\d{4})\.json$")
+
+
+def ops_timeline(hours: int = 24) -> dict[str, Any]:
+    """Recent ops alerts as events in time, from the inbox files already on disk."""
+    inbox = OPS_ROOT / "inbox"
+    cutoff = time.time() - max(1, min(hours, 24 * 14)) * 3600
+    events = []
+    if inbox.is_dir():
+        for path in inbox.iterdir():
+            if not path.is_file():
+                continue
+            mtime = path.stat().st_mtime
+            if mtime < cutoff:
+                continue
+            row = {"name": path.name, "ts": mtime, "monitor": None, "status": None, "detail": None}
+            if path.suffix.lower() == ".json":
+                row.update(_parse_alert(path) or {})
+            events.append(row)
+    events.sort(key=lambda row: row["ts"])
+    return {"ok": True, "events": events, "hours": hours, "ts": time.time()}
+
+
+# Deep-linked services. Any HTTP answer means reachable: Guacamole and MediaMTX
+# both return 404 at / while perfectly healthy, so only a connection failure
+# counts as down.
+SERVICE_TARGETS = _csv_env(
+    "SERVICE_TARGETS",
+    "portainer=https://10.0.0.84:9443,webmin=https://10.0.0.84:10000,"
+    "kuma=http://10.0.0.84:3100,caddy=http://10.0.0.84:3080,"
+    "guacamole=http://10.0.0.84:8081,webodm=http://10.0.0.84:8001,"
+    "orcaslicer=http://10.0.0.84:3030,adsb=http://10.0.0.84:8087,"
+    "mediamtx=http://10.0.0.84:8889,nextcloud=http://10.0.0.84:8080",
+    "NC_TOWER_SERVICE_TARGETS",
+)
+
+
+def services_probe() -> dict[str, Any]:
+    import urllib.error
+    import urllib.request
+    import ssl
+
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+
+    results = []
+    for entry in SERVICE_TARGETS:
+        if "=" not in entry:
+            continue
+        name, url = entry.split("=", 1)
+        started = time.time()
+        status: int | None = None
+        reachable = False
+        detail = ""
+        try:
+            request = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(request, timeout=4, context=context) as response:
+                status = response.status
+                reachable = True
+        except urllib.error.HTTPError as exc:
+            # An HTTP error is still a live service answering.
+            status = exc.code
+            reachable = True
+        except Exception as exc:
+            detail = type(exc).__name__
+        results.append({
+            "name": name,
+            "url": url,
+            "reachable": reachable,
+            "http": status,
+            "ms": int((time.time() - started) * 1000),
+            "detail": detail,
+        })
+    return {"ok": True, "services": results, "ts": time.time()}
+
+
 def backup_run() -> dict[str, Any]:
     try:
         script = Path(BACKUP_SCRIPT).resolve(strict=True)
@@ -1674,6 +1969,26 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, stacks())
             elif path == "/ops/inbox-summary":
                 self._send(200, ops_inbox_summary())
+            elif path == "/ops/timeline":
+                try:
+                    hours = int((query.get("hours") or ["24"])[0])
+                except ValueError:
+                    hours = 24
+                self._send(200, ops_timeline(hours))
+            elif path == "/host/updates":
+                self._send(200, host_updates())
+            elif path == "/host/history":
+                try:
+                    limit = int((query.get("limit") or ["900"])[0])
+                except ValueError:
+                    limit = 900
+                self._send(200, host_history(limit))
+            elif path == "/services/probe":
+                self._send(200, services_probe())
+            elif path == "/jobs":
+                self._result(job_list())
+            elif (match := re.fullmatch(r"/jobs/(.+)", path)):
+                self._result(job_get(unquote(match.group(1))))
             else:
                 self._send(404, {"ok": False, "error": "not_found"})
         except Exception as exc:  # defensive HTTP boundary
@@ -1697,6 +2012,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/ops/backup/run":
                 self._result(backup_run())
+                return
+            if match := re.fullmatch(r"/jobs/([a-z-]+)", path):
+                self._result(job_start(match.group(1), body))
                 return
             if match := re.fullmatch(r"/containers/(.+)/(start|stop|restart|kill)", path):
                 self._result(container_action(unquote(match.group(1)), match.group(2)))

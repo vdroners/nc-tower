@@ -323,6 +323,51 @@ class TowerController extends Controller {
 	}
 
 	#[NoCSRFRequired]
+	public function services(): DataResponse {
+		return $this->getJson('/services/probe', 60);
+	}
+
+	#[NoCSRFRequired]
+	public function hostUpdates(): DataResponse {
+		return $this->getJson('/host/updates', 60);
+	}
+
+	#[NoCSRFRequired]
+	public function hostHistory(): DataResponse {
+		$limit = (int) $this->request->getParam('limit', '900');
+		$limit = max(1, min($limit, 5000));
+		return $this->getJson('/host/history?limit=' . $limit, 30);
+	}
+
+	#[NoCSRFRequired]
+	public function opsTimeline(): DataResponse {
+		$hours = (int) $this->request->getParam('hours', '24');
+		$hours = max(1, min($hours, 336));
+		return $this->getJson('/ops/timeline?hours=' . $hours, 30);
+	}
+
+	#[NoCSRFRequired]
+	public function jobs(): DataResponse {
+		return $this->getJson('/jobs');
+	}
+
+	#[NoCSRFRequired]
+	public function job(string $id): DataResponse {
+		return $this->getJson('/jobs/' . rawurlencode($id));
+	}
+
+	/**
+	 * CSRF required — starts detached work on the host.
+	 *
+	 * The sidecar hands these to systemd so they outlive both this request and
+	 * the sidecar itself; an apt upgrade restarts dockerd and would otherwise
+	 * kill the container running it.
+	 */
+	public function jobStart(string $kind): DataResponse {
+		return $this->requestJson('POST', '/jobs/' . rawurlencode($kind), $this->jsonBody(), 60);
+	}
+
+	#[NoCSRFRequired]
 	public function tools(): DataResponse {
 		$baseWebmin = 'https://10.0.0.84:10000';
 		return new DataResponse([

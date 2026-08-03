@@ -78,5 +78,18 @@ return [
     ['name' => 'tower#opsInbox', 'url' => '/tower/ops-inbox', 'verb' => 'GET'],
     ['name' => 'tower#backupRun', 'url' => '/tower/backup/run', 'verb' => 'POST'],
     ['name' => 'tower#tools', 'url' => '/tower/tools', 'verb' => 'GET'],
+    ['name' => 'tower#services', 'url' => '/tower/services', 'verb' => 'GET'],
+    ['name' => 'tower#hostUpdates', 'url' => '/tower/updates', 'verb' => 'GET'],
+    ['name' => 'tower#hostHistory', 'url' => '/tower/history', 'verb' => 'GET'],
+    ['name' => 'tower#opsTimeline', 'url' => '/tower/ops-timeline', 'verb' => 'GET'],
+    ['name' => 'tower#jobs', 'url' => '/tower/jobs', 'verb' => 'GET'],
+    ['name' => 'tower#job', 'url' => '/tower/jobs/{id}', 'verb' => 'GET'],
+    // Distinct verb from tower#job, so the two cannot shadow each other.
+    [
+        'name' => 'tower#jobStart',
+        'url' => '/tower/jobs/{kind}',
+        'verb' => 'POST',
+        'requirements' => ['kind' => 'apt-upgrade|apt-dry-run|backup|image-pull|stack-action'],
+    ],
   ]
 ];

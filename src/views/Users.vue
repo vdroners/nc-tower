@@ -17,6 +17,13 @@
 					New user
 				</NcButton>
 			</div>
+			<TowerChart v-if="topStorage.labels.length"
+				type="bar"
+				:labels="topStorage.labels"
+				:datasets="topStorage.datasets"
+				:height="170"
+				y-suffix=" GB"
+				title="Largest accounts by storage" />
 			<DataTable :columns="userColumns" :rows="filteredUsers" row-key="uid" default-sort="uid" empty-text="No users">
 				<template #cell-isadmin="{ row }">
 					<span v-if="row.isadmin" class="nc-tower-badge">admin</span>
@@ -132,13 +139,14 @@ import NcTextField from '@nextcloud/vue/dist/Components/NcTextField.js'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import NcTowerIcon from '../components/NcTowerIcon.vue'
 import DataTable from '../components/DataTable.vue'
+import TowerChart from '../components/TowerChart.vue'
 import Section from '../components/Section.vue'
 import { get, post } from '../services/api.js'
 import Poller from '../services/poll.js'
 
 export default {
 	name: 'Users',
-	components: { ConfirmDialog, DataTable, NcTowerIcon, Section, NcActionButton, NcActions, NcButton, NcDialog, NcLoadingIcon, NcTextField },
+	components: { ConfirmDialog, DataTable, NcTowerIcon, Section, TowerChart, NcActionButton, NcActions, NcButton, NcDialog, NcLoadingIcon, NcTextField },
 	data() {
 		return {
 			data: {},
@@ -176,6 +184,18 @@ export default {
 			return this.data.userCount != null
 				? `${this.data.userCount} user(s) · ${this.data.adminCount || 0} admin(s)`
 				: ''
+		},
+		topStorage() {
+			// 126 accounts, of which a handful hold everything — the table can be
+			// sorted to find them, but a bar says it without being asked.
+			const rows = [...(this.data.users || [])]
+				.filter((u) => (u.used_bytes || 0) > 0)
+				.sort((a, b) => b.used_bytes - a.used_bytes)
+				.slice(0, 10)
+			return {
+				labels: rows.map((u) => u.uid),
+				datasets: [{ label: 'GB used', data: rows.map((u) => Math.round((u.used_bytes / 1073741824) * 10) / 10) }],
+			}
 		},
 		filteredUsers() {
 			const list = this.data.users || []

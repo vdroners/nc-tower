@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.11.0] - 2026-08-03
+
+Job runner, host updates brought in-house, and the first visualisations.
+Plan: `docs/plans/control-tower-jobs-and-visuals.md`.
+
+### Added
+- **Detached job runner.** Long operations are handed to the host's systemd and their
+  state lives in `/ops/jobs`, so they survive both this request and the sidecar itself.
+  Proven: a job was started, the sidecar restarted underneath it, and it still completed
+  and stayed readable. This is a prerequisite for updates — every pending package on this
+  host is `docker-ce`, and upgrading it restarts the daemon that runs the sidecar
+- **Host → Updates.** Pending packages, whether any restart Docker, whether a reboot is
+  required, a dry run, and an **Install updates** action behind a typed confirmation.
+  `apt-get` is invoked with a fixed argv; nothing an operator types reaches the command.
+  Control Tower never reboots — that stays deliberate and manual
+- `TowerChart.vue` (chart.js, modelled on nc-wireguard's RateChart) and `Sparkline.vue`
+  (canvas, modelled on nc-print's TemperatureSparkline) — the estate's two chart patterns
+- Visualisations: per-container CPU sparkline and share bar, SMART drive-life bars against
+  the 7-year mark, Docker used-vs-reclaimable, host memory trend from the 6,202 samples the
+  host already records, a 24 h ops-alert timeline on Home, and a top-10 storage bar on Users
+- Gates **G27** (jobs detached, argv fixed, no reboot ever issued) and G20 payload cases for
+  the new endpoints, including that a service answering 404 counts as reachable
+
+### Changed
+- **Tools is now Services**: live reachability per console, grouped into absorbed into
+  Tower / break-glass / external, with each break-glass entry stating what it is still for.
+  OrcaSlicer was down and the old flat link grid gave no hint
+- Backup, image pull and stack actions can move onto the job path, which fixes their
+  existing habit of timing out in the browser while succeeding on the host
+
 ## [1.10.0] - 2026-08-03
 
 Continuity test of front end against backend, plus alignment with the other Nextcloud

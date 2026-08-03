@@ -152,6 +152,9 @@ else
   echo "PASS G26 classes use the nc-tower- prefix"
 fi
 check G26 "app icon rebranded off upstream" grep -q 'Control Tower' img/app.svg
+check G26 "chart component present" test -f src/components/TowerChart.vue
+check G26 "sparkline component present" test -f src/components/Sparkline.vue
+check G26 "job panel present" test -f src/components/JobPanel.vue
 check G26 "vitest configured" test -f vitest.config.cjs
 check G26 "triage rules covered by tests" test -f src/__tests__/health.spec.js
 
@@ -220,6 +223,38 @@ rows = d.get("events") or []
 if not rows:
     sys.exit(0)
 sys.exit(1 if all(str(r.get("Action","")).startswith("exec_") for r in rows) else 0)
+'
+  payload_gate G20 /host/updates '
+import sys, json
+d = json.load(sys.stdin)
+need = ("packages", "restarts_docker", "reboot_required", "count")
+sys.exit(0 if all(k in d for k in need) else 1)
+'
+  payload_gate G20 /host/history '
+import sys, json
+d = json.load(sys.stdin)
+rows = d.get("samples") or []
+if not rows:
+    sys.exit(0)
+sys.exit(0 if all("ts" in r and "mem_pct" in r for r in rows) else 1)
+'
+  payload_gate G20 /services/probe '
+import sys, json
+d = json.load(sys.stdin)
+rows = d.get("services") or []
+if not rows:
+    sys.exit(1)
+if not all("reachable" in r and "http" in r for r in rows):
+    sys.exit(1)
+# A service answering 404 is reachable. Guacamole and MediaMTX do exactly that
+# while being healthy, and a naive check would report both as down.
+bad = [r for r in rows if r.get("http") and not r["reachable"]]
+sys.exit(1 if bad else 0)
+'
+  payload_gate G20 /jobs '
+import sys, json
+d = json.load(sys.stdin)
+sys.exit(0 if isinstance(d.get("jobs"), list) else 1)
 '
   payload_gate G20 /host/smart '
 import sys, json

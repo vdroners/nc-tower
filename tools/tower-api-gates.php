@@ -88,6 +88,25 @@ gate('G24', 'no dependency on absent getQuotaUsage',
 	&& !preg_match('/method_exists\s*\([^)]*getQuotaUsage/', $uc));
 gate('G24', 'raw bytes exposed for sorting', str_contains($uc, 'used_bytes'));
 
+// --- G27 job runner ----------------------------------------------------------
+// apt upgrade restarts dockerd, which kills this app's sidecar mid-request, so
+// jobs must be handed to the host's systemd rather than run as a child.
+gate('G27', 'jobs are detached via systemd-run', str_contains($sidecar, 'systemd-run'));
+gate('G27', 'job state survives on disk', str_contains($sidecar, 'JOBS_DIR'));
+gate('G27', 'job kinds are a fixed allowlist', str_contains($sidecar, '_job_argv'));
+// The shell wrapper must only ever receive quoted, server-built argv.
+gate('G27', 'job command is shell-quoted', str_contains($sidecar, 'shlex.quote'));
+gate('G27', 'apt argv is fixed, not operator-supplied',
+	str_contains($sidecar, 'Dpkg::Options::=--force-confold'));
+// Match an invocation, not a mention. Reading /var/run/reboot-required and
+// reporting reboot_packages is exactly what this app should do, and
+// _FORBIDDEN_EXEC legitimately *lists* these verbs as the container-exec deny
+// list — so strip that block first, then assert nothing invokes them.
+$sidecarNoDenyList = preg_replace('/_FORBIDDEN_EXEC\s*=\s*\{.*?\}/s', '', $sidecar);
+gate('G27', 'Tower never issues a reboot or shutdown',
+	!preg_match('#["\'](reboot|poweroff|halt|shutdown)["\']#i', $sidecarNoDenyList)
+	&& !preg_match('#/s?bin/(reboot|poweroff|halt|shutdown)\b#i', $sidecarNoDenyList));
+
 // --- G21 admin gating -------------------------------------------------------
 $stray = [];
 foreach (glob("$remote/lib/Controller/*.php") ?: [] as $file) {

@@ -232,6 +232,13 @@
 				<span class="nc-tower-chip">{{ engine.Images ?? '—' }} images</span>
 				<span class="nc-tower-chip">{{ engine.OperatingSystem || '—' }}</span>
 			</div>
+			<TowerChart v-if="dfRows.length"
+				type="bar"
+				:labels="dfRows.map((r) => r.Type)"
+				:datasets="dfDatasets"
+				:height="150"
+				show-legend
+				title="Docker disk usage" />
 			<DataTable :columns="dfColumns" :rows="dfRows" empty-text="No disk usage data" />
 		</Section>
 
@@ -386,6 +393,8 @@ import AttentionList from '../components/AttentionList.vue'
 import NcTowerIcon from '../components/NcTowerIcon.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DataTable from '../components/DataTable.vue'
+import Sparkline from '../components/Sparkline.vue'
+import TowerChart from '../components/TowerChart.vue'
 import OutputDialog from '../components/OutputDialog.vue'
 import Section from '../components/Section.vue'
 import StatusBanner from '../components/StatusBanner.vue'
@@ -401,7 +410,8 @@ const LOCKED_HINT = 'Widen NC_TOWER_CONTAINER_LOG_ALLOW for read-only logs witho
 export default {
 	name: 'Ops',
 	components: {
-		AttentionList, ConfirmDialog, DataTable, NcTowerIcon, OutputDialog, Section, StatusBanner, UsageBar,
+		AttentionList, ConfirmDialog, DataTable, NcTowerIcon, OutputDialog, Section, Sparkline,
+		StatusBanner, TowerChart, UsageBar,
 		NcActionButton, NcActions, NcButton, NcCheckboxRadioSwitch, NcDialog, NcNoteCard, NcTextField,
 	},
 	data() {
@@ -426,6 +436,7 @@ export default {
 			system: {},
 			appUpdates: {},
 			showProbes: false,
+			trends: {},
 			loading: {},
 			errors: {},
 			containerFilter: '',
@@ -443,7 +454,8 @@ export default {
 				{ key: 'name', label: 'Name' },
 				{ key: 'project', label: 'Project' },
 				{ key: 'status', label: 'Status' },
-				{ key: 'cpu', label: 'CPU', align: 'end' },
+				{ key: 'cpu', label: 'CPU', align: 'end', sortBy: 'cpu_pct' },
+				{ key: 'trend', label: 'Trend', sortable: false },
 				{ key: 'mem', label: 'Memory', align: 'end' },
 				{ key: 'ports', label: 'Ports' },
 				{ key: 'actions', label: '', align: 'end', sortable: false },
@@ -648,6 +660,20 @@ export default {
 		stackRows() {
 			return this.stacks.stacks || []
 		},
+		dfDatasets() {
+			const bytes = (text) => {
+				const m = String(text || '').match(/([\d.]+)\s*([KMGT]?B)/i)
+				if (!m) {
+					return 0
+				}
+				const unit = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }
+				return (parseFloat(m[1]) * (unit[m[2].toUpperCase()] || 1)) / 1024 ** 3
+			}
+			return [
+				{ label: 'Size (GB)', data: this.dfRows.map((r) => bytes(r.Size)) },
+				{ label: 'Reclaimable (GB)', data: this.dfRows.map((r) => bytes(r.Reclaimable)) },
+			]
+		},
 		dfRows() {
 			return (this.df.rows || []).filter((row) => typeof row === 'object')
 		},
@@ -752,11 +778,31 @@ export default {
 		refresh(name) {
 			return this.poller.refresh(name)
 		},
+		cpuShare(row) {
+			// Share of the busiest container, so the bars compare against each
+			// other rather than against an abstract 100%.
+			const peak = Math.max(...(this.containers.containers || []).map((c) => c.cpu_pct || 0), 1)
+			return ((row.cpu_pct || 0) / peak) * 100
+		},
+		recordTrends(rows) {
+			const next = { ...this.trends }
+			for (const row of rows) {
+				const pct = parseFloat(String(row.cpu || '').replace('%', ''))
+				row.cpu_pct = Number.isFinite(pct) ? pct : 0
+				// 30 samples at 10 s ≈ five minutes of history, held in memory
+				// only: nothing on the host records per-container CPU.
+				next[row.name] = [...(next[row.name] || []), row.cpu_pct].slice(-30)
+			}
+			this.trends = next
+		},
 		async fetch(key, path, params, loadingKey) {
 			const slot = loadingKey || key
 			this.$set(this.loading, slot, true)
 			try {
 				this[key] = await get(path, params)
+				if (key === 'containers') {
+					this.recordTrends(this[key].containers || [])
+				}
 				this.$set(this.errors, slot, '')
 				this.updatedAt = new Date().toLocaleTimeString()
 			} catch (error) {
@@ -965,6 +1011,17 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.nc-tower-cpu-cell,
+.nc-tower-life {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	align-items: flex-end;
+	min-width: 110px;
+}
+
+.nc-tower-life { align-items: flex-start; }
+
 .nc-tower-toolbar {
 	display: flex;
 	align-items: flex-end;

@@ -17,6 +17,18 @@
 			</a>
 		</div>
 
+		<section class="nc-tower-timeline-card">
+			<h3 class="nc-tower-timeline-card__title">Last 24 hours</h3>
+			<TowerChart v-if="timelineDatasets[0].data.length"
+				type="bar"
+				:labels="timelineLabels"
+				:datasets="timelineDatasets"
+				:height="130"
+				show-legend
+				title="Ops alerts by hour" />
+			<p v-else class="nc-tower-muted">No ops alerts recorded in the last 24 hours.</p>
+		</section>
+
 		<NcNoteCard v-if="sidecarDown" type="error">
 			The Control Tower sidecar is not answering — host, Docker and stack views will be
 			empty until it is back. Check the <code>nc_tower_sidecar</code> container and that
@@ -29,6 +41,7 @@
 import { generateUrl } from '@nextcloud/router'
 import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
 import AttentionList from '../components/AttentionList.vue'
+import TowerChart from '../components/TowerChart.vue'
 import StatusBanner from '../components/StatusBanner.vue'
 import { get } from '../services/api.js'
 import fmt from '../services/format.js'
@@ -41,7 +54,7 @@ import Poller from '../services/poll.js'
  */
 export default {
 	name: 'Home',
-	components: { AttentionList, NcNoteCard, StatusBanner },
+	components: { AttentionList, NcNoteCard, StatusBanner, TowerChart },
 	data() {
 		return {
 			host: {},
@@ -54,6 +67,7 @@ export default {
 			busy: false,
 			updatedAt: '',
 			sidecarDown: false,
+			timeline: {},
 		}
 	},
 	computed: {
@@ -79,6 +93,41 @@ export default {
 				out.push(`up ${fmt.duration(this.host.uptime_s)}`)
 			}
 			return out
+		},
+		timelineBuckets() {
+			// One bucket per hour for the last 24, so a quiet night reads as a
+			// flat line rather than as missing data.
+			const now = new Date()
+			now.setMinutes(0, 0, 0)
+			const buckets = []
+			for (let i = 23; i >= 0; i--) {
+				buckets.push({ at: new Date(now.getTime() - i * 3600000), warn: 0, crit: 0 })
+			}
+			for (const event of this.timeline.events || []) {
+				const at = new Date(event.ts * 1000)
+				at.setMinutes(0, 0, 0)
+				const bucket = buckets.find((b) => b.at.getTime() === at.getTime())
+				if (!bucket) {
+					continue
+				}
+				const status = String(event.status || '').toLowerCase()
+				if (status === 'crit' || status === 'critical') {
+					bucket.crit++
+				} else if (status === 'warn') {
+					bucket.warn++
+				}
+			}
+			return buckets
+		},
+		timelineLabels() {
+			return this.timelineBuckets.map((b) => `${String(b.at.getHours()).padStart(2, '0')}:00`)
+		},
+		timelineDatasets() {
+			const buckets = this.timelineBuckets
+			return [
+				{ label: 'Warnings', data: buckets.map((b) => b.warn), backgroundColor: 'var(--color-warning)' },
+				{ label: 'Critical', data: buckets.map((b) => b.crit), backgroundColor: 'var(--color-error)' },
+			]
 		},
 		cards() {
 			const counts = this.containers.counts || {}
@@ -136,6 +185,7 @@ export default {
 		p.add('containers', () => this.fetch('containers', '/tower/containers'), 30000)
 		p.add('host', () => this.fetch('host', '/tower/host'), 30000)
 		p.add('inbox', () => this.fetch('inbox', '/tower/ops-inbox'), 60000)
+		p.add('timeline', () => this.fetch('timeline', '/tower/ops-timeline?hours=24'), 300000)
 		p.add('system', () => this.fetch('system', '/systeminfo'), 120000)
 		p.add('users', () => this.fetch('users', '/usercount'), 300000)
 		p.add('updates', () => this.fetch('updates', '/appupdates'), 300000)
@@ -182,6 +232,20 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.nc-tower-timeline-card {
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius-large, 8px);
+	background: var(--color-main-background);
+	padding: 10px 14px 12px;
+	margin-bottom: 14px;
+
+	&__title {
+		margin: 0 0 8px;
+		font-size: 1em;
+		color: var(--color-text-maxcontrast);
+	}
+}
+
 .nc-tower-cards {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
