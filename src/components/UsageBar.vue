@@ -1,9 +1,9 @@
 <template>
-	<div class="tower-usage">
-		<div class="tower-usage__track">
-			<div class="tower-usage__fill" :class="`tower-usage__fill--${level}`" :style="{ width: `${clamped}%` }" />
+	<div class="nc-tower-usage">
+		<div class="nc-tower-usage__track">
+			<div class="nc-tower-usage__fill" :class="`nc-tower-usage__fill--${level}`" :style="{ width: `${clamped}%` }" />
 		</div>
-		<span class="tower-usage__label">{{ clamped }}%</span>
+		<span class="nc-tower-usage__label">{{ clamped }}%</span>
 	</div>
 </template>
 
@@ -40,7 +40,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-usage {
+.nc-tower-usage {
 	display: flex;
 	align-items: center;
 	gap: 8px;

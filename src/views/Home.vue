@@ -1,5 +1,5 @@
 <template>
-	<div class="tower-view">
+	<div class="nc-tower-view">
 		<StatusBanner :level="verdict.level"
 			:count="verdict.items.length"
 			:facts="facts"
@@ -9,11 +9,11 @@
 
 		<AttentionList :items="verdict.items" />
 
-		<div class="tower-cards">
-			<a v-for="card in cards" :key="card.id" class="tower-card" :href="url(card.route)">
-				<span class="tower-card__label">{{ card.label }}</span>
-				<strong class="tower-card__value">{{ card.value }}</strong>
-				<span class="tower-card__note">{{ card.note }}</span>
+		<div class="nc-tower-cards">
+			<a v-for="card in cards" :key="card.id" class="nc-tower-card" :href="url(card.route)">
+				<span class="nc-tower-card__label">{{ card.label }}</span>
+				<strong class="nc-tower-card__value">{{ card.value }}</strong>
+				<span class="nc-tower-card__note">{{ card.note }}</span>
 			</a>
 		</div>
 
@@ -182,14 +182,14 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-cards {
+.nc-tower-cards {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
 	gap: 10px;
 	margin-bottom: 14px;
 }
 
-.tower-card {
+.nc-tower-card {
 	display: flex;
 	flex-direction: column;
 	gap: 2px;

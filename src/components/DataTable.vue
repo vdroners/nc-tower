@@ -1,6 +1,6 @@
 <template>
-	<div class="tower-table-wrap">
-		<table class="tower-table">
+	<div class="nc-tower-table-wrap">
+		<table class="nc-tower-table">
 			<thead>
 				<tr>
 					<th v-for="col in columns"
@@ -15,7 +15,10 @@
 						@keydown.enter.prevent="col.sortable === false ? null : toggleSort(col.key)"
 						@keydown.space.prevent="col.sortable === false ? null : toggleSort(col.key)">
 						{{ col.label }}
-						<span v-if="sortKey === col.key" class="tower-table__caret">{{ sortAsc ? '▲' : '▼' }}</span>
+						<NcTowerIcon v-if="sortKey === col.key"
+							:name="sortAsc ? 'chevron-up' : 'chevron-down'"
+							:size="14"
+							class="nc-tower-table__caret" />
 					</th>
 				</tr>
 			</thead>
@@ -31,7 +34,7 @@
 					</td>
 				</tr>
 				<tr v-if="!sorted.length">
-					<td :colspan="columns.length" class="tower-table__empty">{{ emptyText }}</td>
+					<td :colspan="columns.length" class="nc-tower-table__empty">{{ emptyText }}</td>
 				</tr>
 			</tbody>
 		</table>
@@ -39,6 +42,8 @@
 </template>
 
 <script>
+import NcTowerIcon from './NcTowerIcon.vue'
+
 /**
  * One markup, two layouts: a real table on desktop, and below 720 px each row
  * reflows into a stacked card with the column label rendered from data-label.
@@ -46,6 +51,7 @@
  */
 export default {
 	name: 'DataTable',
+	components: { NcTowerIcon },
 	props: {
 		columns: {
 			type: Array,
@@ -120,11 +126,11 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-table-wrap {
+.nc-tower-table-wrap {
 	overflow-x: auto;
 }
 
-.tower-table {
+.nc-tower-table {
 	width: 100%;
 	border-collapse: collapse;
 	font-size: 0.9em;
@@ -158,7 +164,6 @@ export default {
 	.is-center { text-align: center; }
 
 	&__caret {
-		font-size: 0.7em;
 		color: var(--color-text-maxcontrast);
 	}
 
@@ -170,7 +175,7 @@ export default {
 
 // Phone: every row becomes its own card, labels come from data-label.
 @media (max-width: 720px) {
-	.tower-table {
+	.nc-tower-table {
 		thead { display: none; }
 
 		tr {

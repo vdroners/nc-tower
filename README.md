@@ -1,6 +1,6 @@
 # Control Tower
 
-**Version 1.9.2**
+**Version 1.10.0**
 
 Control Tower is the Nextcloud orchestrator for this GCS host: Nextcloud admin, Docker
 day-ops, host health and the ops inbox in one place, so routine work does not need
@@ -131,11 +131,14 @@ The gates are the safety net, so they check behaviour rather than only file pres
 | G22 | The prebuilt upstream bundles are gone |
 | G23 | Every name a Vue template uses is actually declared |
 | G24 | User storage does not depend on an API that Nextcloud 31–34 lacks |
+| G25 | Contested URLs resolve to their intended handler, asked of the real router |
+| G26 | House style: icon component, no Unicode glyphs, `nc-tower-` prefix, tests present |
 
-G20, G23 and G24 each exist because of a real defect: shipped code passed every route and
+G20, G23, G24 and G25 each exist because of a real defect: shipped code passed every route and
 file gate while the values it displayed were wrong, webpack compiles a template that reads
 an undeclared name without complaint, and the Users tab showed a dash for every account
-while some held hundreds of gigabytes.
+while some held hundreds of gigabytes, and a route placeholder declared one line too early
+silently swallowed container Exec and Recreate for three releases.
 
 ## Development
 
@@ -147,15 +150,21 @@ while some held hundreds of gigabytes.
 | `js/` | Build output — generated, never edit by hand |
 | `sidecar/` | Privileged host agent (Python, stdlib only) |
 | `tools/` | Gate harnesses |
+| `src/__tests__/` | vitest specs (`npm run test`) |
 | `docs/plans/` | Checked-in plans |
 
 ```bash
 npm ci && npm run build    # or: make build
 npm run check:refs         # template reference check alone
+npm run test               # vitest (triage rules and formatters)
 make deploy
 make gate-preflight
 make bump-patch
 ```
+
+Icons are inline SVG from `src/components/NcTowerIcon.vue`, the same per-app registry
+pattern as `GcsIcon.vue` and `NcPrintIcon.vue` — no icon library is used anywhere in the
+estate. CSS classes are prefixed `nc-tower-`, matching `nc-print-` / `nc-roomba-` / `nc-wg-`.
 
 The front end is Vue 2.7 + `@nextcloud/vue` 8, matching nc_gcs. All seven PHP routes mount
 the same bundle and choose their view from a `data-page` attribute, so deep links and hard

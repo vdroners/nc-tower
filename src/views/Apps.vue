@@ -1,7 +1,7 @@
 <template>
-	<div class="tower-view">
+	<div class="nc-tower-view">
 		<h2>Apps</h2>
-		<p class="tower-view__lead">Enable, disable and update Nextcloud apps installed on this server.</p>
+		<p class="nc-tower-view__lead">Enable, disable and update Nextcloud apps installed on this server.</p>
 
 		<Section id="apps.updates"
 			title="Updates"
@@ -13,10 +13,10 @@
 			@refresh="refresh('updates')">
 			<DataTable :columns="updateColumns" :rows="updates.apps || []" row-key="id" empty-text="All apps up to date">
 				<template #cell-name="{ row }">
-					<span class="tower-app"><img v-if="row.icon" :src="row.icon" alt="" class="tower-app__icon">{{ appLabel(row) }}</span>
+					<span class="nc-tower-app"><img v-if="row.icon" :src="row.icon" alt="" class="nc-tower-app__icon">{{ appLabel(row) }}</span>
 				</template>
 				<template #cell-actions="{ row }">
-					<div class="tower-actions-cell">
+					<div class="nc-tower-actions-cell">
 						<NcButton type="primary" :disabled="busy === row.id" @click="update(row)">
 							{{ busy === row.id ? 'Updating…' : `Update to ${row.updateVersion}` }}
 						</NcButton>
@@ -32,23 +32,23 @@
 			:error="errors.info"
 			default-open
 			@refresh="refresh('info')">
-			<div class="tower-toolbar">
+			<div class="nc-tower-toolbar">
 				<NcTextField :value.sync="filter" label="Filter apps" placeholder="Filter by name or id" />
 			</div>
 			<DataTable :columns="appColumns" :rows="filtered(info.thisappsenabledfull)" row-key="appid" default-sort="appid" empty-text="None">
 				<template #cell-appid="{ row }">
-					<span class="tower-app"><img v-if="row.icon" :src="row.icon" alt="" class="tower-app__icon">{{ appLabel(row) }}</span>
+					<span class="nc-tower-app"><img v-if="row.icon" :src="row.icon" alt="" class="nc-tower-app__icon">{{ appLabel(row) }}</span>
 				</template>
 				<template #cell-shipped="{ row }">{{ row.shipped ? 'shipped' : 'custom' }}</template>
 				<template #cell-actions="{ row }">
-					<div class="tower-actions-cell">
+					<div class="nc-tower-actions-cell">
 						<NcButton v-if="!row.shipped"
 							type="secondary"
 							:disabled="busy === row.appid"
 							@click="ask('disable', row)">
 							Disable
 						</NcButton>
-						<span v-else class="tower-muted">shipped</span>
+						<span v-else class="nc-tower-muted">shipped</span>
 					</div>
 				</template>
 			</DataTable>
@@ -62,11 +62,11 @@
 			@refresh="refresh('info')">
 			<DataTable :columns="appColumns" :rows="filtered(info.thisappsdisabledfull)" row-key="appid" default-sort="appid" empty-text="None">
 				<template #cell-appid="{ row }">
-					<span class="tower-app"><img v-if="row.icon" :src="row.icon" alt="" class="tower-app__icon">{{ appLabel(row) }}</span>
+					<span class="nc-tower-app"><img v-if="row.icon" :src="row.icon" alt="" class="nc-tower-app__icon">{{ appLabel(row) }}</span>
 				</template>
 				<template #cell-shipped="{ row }">{{ row.shipped ? 'shipped' : 'custom' }}</template>
 				<template #cell-actions="{ row }">
-					<div class="tower-actions-cell">
+					<div class="nc-tower-actions-cell">
 						<NcButton type="primary" :disabled="busy === row.appid" @click="ask('enable', row)">Enable</NcButton>
 					</div>
 				</template>
@@ -79,10 +79,10 @@
 			:loading="loading.info"
 			:error="errors.info"
 			@refresh="refresh('info')">
-			<h4 class="tower-subhead">Admin</h4>
-			<p class="tower-muted">{{ (info.adminsectionsappname || []).join(', ') || '—' }}</p>
-			<h4 class="tower-subhead">Personal</h4>
-			<p class="tower-muted">{{ (info.personalsectionsappname || []).join(', ') || '—' }}</p>
+			<h4 class="nc-tower-subhead">Admin</h4>
+			<p class="nc-tower-muted">{{ (info.adminsectionsappname || []).join(', ') || '—' }}</p>
+			<h4 class="nc-tower-subhead">Personal</h4>
+			<p class="nc-tower-muted">{{ (info.personalsectionsappname || []).join(', ') || '—' }}</p>
 		</Section>
 
 		<ConfirmDialog v-bind="confirm"
@@ -243,18 +243,18 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-toolbar {
+.nc-tower-toolbar {
 	margin-bottom: 10px;
 	max-width: 360px;
 }
 
-.tower-subhead {
+.nc-tower-subhead {
 	margin: 14px 0 4px;
 	font-size: 0.95em;
 	color: var(--color-text-maxcontrast);
 }
 
-.tower-app {
+.nc-tower-app {
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;

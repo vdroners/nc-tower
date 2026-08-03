@@ -1,7 +1,7 @@
 <template>
-	<div class="tower-view">
+	<div class="nc-tower-view">
 		<h2>System</h2>
-		<p class="tower-view__lead">
+		<p class="nc-tower-view__lead">
 			Nextcloud, PHP and database facts. Filesystem and network figures here are the
 			Nextcloud container's own view — the Host tab shows the physical host.
 		</p>
@@ -13,7 +13,7 @@
 			:error="errors.info"
 			default-open
 			@refresh="refresh('info')">
-			<dl class="tower-facts">
+			<dl class="nc-tower-facts">
 				<template v-for="fact in overviewFacts">
 					<dt :key="`${fact.label}-l`">{{ fact.label }}</dt>
 					<dd :key="`${fact.label}-v`">{{ fact.value || '—' }}</dd>
@@ -31,21 +31,21 @@
 			:error="errors.info"
 			default-open
 			@refresh="refresh('info')">
-			<div class="tower-chips">
-				<span class="tower-chip">RAM {{ info.ram_used || '—' }} / {{ info.ram_total || '—' }}</span>
-				<span class="tower-chip">available {{ info.ram_available || '—' }}</span>
-				<span class="tower-chip">data dir {{ storageUsedLabel }} / {{ storageTotalLabel }}</span>
-				<span class="tower-chip">DB {{ sql.dbtyp || '—' }} {{ sql.dbversion || '' }}</span>
-				<span class="tower-chip">DB size {{ sql.dbsize || '—' }}</span>
+			<div class="nc-tower-chips">
+				<span class="nc-tower-chip">RAM {{ info.ram_used || '—' }} / {{ info.ram_total || '—' }}</span>
+				<span class="nc-tower-chip">available {{ info.ram_available || '—' }}</span>
+				<span class="nc-tower-chip">data dir {{ storageUsedLabel }} / {{ storageTotalLabel }}</span>
+				<span class="nc-tower-chip">DB {{ sql.dbtyp || '—' }} {{ sql.dbversion || '' }}</span>
+				<span class="nc-tower-chip">DB size {{ sql.dbsize || '—' }}</span>
 			</div>
 			<UsageBar :percent="ramPercent" />
-			<h4 class="tower-subhead">Data directory</h4>
-			<p class="tower-mono tower-muted">{{ storagePath }}</p>
+			<h4 class="nc-tower-subhead">Data directory</h4>
+			<p class="nc-tower-mono tower-muted">{{ storagePath }}</p>
 			<UsageBar :percent="storagePercent" />
-			<p class="tower-muted">
+			<p class="nc-tower-muted">
 				{{ storageUsedLabel }} used · {{ storageFreeLabel }} free of {{ storageTotalLabel }}
 			</p>
-			<h4 class="tower-subhead">Filesystems (as seen by the Nextcloud container)</h4>
+			<h4 class="nc-tower-subhead">Filesystems (as seen by the Nextcloud container)</h4>
 			<DataTable :columns="diskColumns" :rows="info.diskinfo || []" row-key="Mount" default-sort="Mount" empty-text="No filesystems">
 				<template #cell-Percent="{ row }"><UsageBar :percent="parseFloat(row.Percent)" /></template>
 				<template #cell-UsedFormatted="{ row }">{{ row.UsedFormatted }} / {{ row.TotalFormatted }}</template>
@@ -58,7 +58,7 @@
 			:loading="loading.info"
 			:error="errors.info"
 			@refresh="refresh('info')">
-			<dl class="tower-facts">
+			<dl class="nc-tower-facts">
 				<dt>Version</dt><dd>{{ info.php_version || '—' }}</dd>
 				<dt>Memory limit</dt><dd>{{ info.memory_limit || '—' }}</dd>
 				<dt>Max upload</dt><dd>{{ info.max_upload_size || '—' }}</dd>
@@ -66,8 +66,8 @@
 				<dt>OPcache revalidate</dt><dd>{{ info.opcache_freq || '—' }}</dd>
 				<dt>Web server</dt><dd>{{ info.webserver || '—' }}</dd>
 			</dl>
-			<h4 class="tower-subhead">Extensions</h4>
-			<p class="tower-extensions">{{ extensionList }}</p>
+			<h4 class="nc-tower-subhead">Extensions</h4>
+			<p class="nc-tower-extensions">{{ extensionList }}</p>
 		</Section>
 
 		<Section id="system.network"
@@ -85,8 +85,8 @@
 			:loading="loading.info"
 			:error="errors.info"
 			@refresh="refresh('info')">
-			<dl class="tower-facts">
-				<dt>Path</dt><dd class="tower-mono">{{ info.nc_logfile || '—' }}</dd>
+			<dl class="nc-tower-facts">
+				<dt>Path</dt><dd class="nc-tower-mono">{{ info.nc_logfile || '—' }}</dd>
 				<dt>Size</dt><dd>{{ info.nc_logfile_size || '—' }}</dd>
 				<dt>Update channel</dt><dd>{{ info.nc_updatechannel || '—' }}</dd>
 			</dl>
@@ -217,7 +217,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-facts {
+.nc-tower-facts {
 	display: grid;
 	grid-template-columns: minmax(140px, max-content) 1fr;
 	gap: 4px 16px;
@@ -227,26 +227,26 @@ export default {
 	dd { margin: 0; overflow-wrap: anywhere; }
 }
 
-.tower-subhead {
+.nc-tower-subhead {
 	margin: 16px 0 6px;
 	font-size: 0.95em;
 	color: var(--color-text-maxcontrast);
 }
 
-.tower-extensions {
+.nc-tower-extensions {
 	font-size: 0.85em;
 	color: var(--color-text-maxcontrast);
 	overflow-wrap: anywhere;
 	margin: 0;
 }
 
-.tower-mono {
+.nc-tower-mono {
 	font-family: var(--font-face-monospace, monospace);
 	font-size: 0.9em;
 }
 
 @media (max-width: 720px) {
-	.tower-facts { grid-template-columns: 1fr; }
-	.tower-facts dt { margin-top: 6px; }
+	.nc-tower-facts { grid-template-columns: 1fr; }
+	.nc-tower-facts dt { margin-top: 6px; }
 }
 </style>

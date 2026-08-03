@@ -1,5 +1,5 @@
 <template>
-	<div class="tower-view">
+	<div class="nc-tower-view">
 		<StatusBanner :level="verdict.level"
 			:count="verdict.items.length"
 			:facts="facts"
@@ -17,7 +17,7 @@
 			:error="errors.containers"
 			default-open
 			@refresh="refresh('containers')">
-			<div class="tower-toolbar">
+			<div class="nc-tower-toolbar">
 				<NcTextField :value.sync="containerFilter"
 					label="Filter containers"
 					placeholder="Filter name, project, image, status…"
@@ -31,26 +31,50 @@
 				default-sort="name"
 				empty-text="No containers">
 				<template #cell-status="{ row }">
-					<span class="tower-state" :class="`tower-state--${row.status}`">{{ row.status }}</span>
+					<span class="nc-tower-state" :class="`nc-tower-state--${row.status}`">{{ row.status }}</span>
 				</template>
 				<template #cell-ports="{ row }">{{ fmt.ports(row.ports) }}</template>
 				<template #cell-actions="{ row }">
-					<div class="tower-actions-cell">
-						<span v-if="!row.mutable && !row.loggable" class="tower-muted" :title="lockedHint">locked</span>
+					<div class="nc-tower-actions-cell">
+						<span v-if="!row.mutable && !row.loggable" class="nc-tower-muted" :title="lockedHint">locked</span>
 						<NcActions v-else :aria-label="`Actions for ${row.name}`">
-							<NcActionButton v-if="row.loggable || row.mutable" @click="openLogs(row.name)">Logs</NcActionButton>
-							<NcActionButton v-if="row.loggable || row.mutable" @click="openInspect(row.name)">Inspect</NcActionButton>
-							<NcActionButton v-if="row.mutable" @click="ask('restart', row.name)">Restart</NcActionButton>
-							<NcActionButton v-if="row.mutable" @click="ask('stop', row.name)">Stop</NcActionButton>
-							<NcActionButton v-if="row.mutable" @click="ask('start', row.name)">Start</NcActionButton>
-							<NcActionButton v-if="row.mutable" @click="ask('kill', row.name)">Kill</NcActionButton>
-							<NcActionButton v-if="row.mutable" @click="ask('recreate', row.name)">Recreate</NcActionButton>
-							<NcActionButton v-if="row.mutable" @click="openExec(row.name)">Exec</NcActionButton>
+							<NcActionButton v-if="row.loggable || row.mutable" @click="openLogs(row.name)">
+									<template #icon><NcTowerIcon name="file-text" :size="18" /></template>
+									Logs
+								</NcActionButton>
+							<NcActionButton v-if="row.loggable || row.mutable" @click="openInspect(row.name)">
+									<template #icon><NcTowerIcon name="search" :size="18" /></template>
+									Inspect
+								</NcActionButton>
+							<NcActionButton v-if="row.mutable" @click="ask('restart', row.name)">
+									<template #icon><NcTowerIcon name="refresh" :size="18" /></template>
+									Restart
+								</NcActionButton>
+							<NcActionButton v-if="row.mutable" @click="ask('stop', row.name)">
+									<template #icon><NcTowerIcon name="stop" :size="18" /></template>
+									Stop
+								</NcActionButton>
+							<NcActionButton v-if="row.mutable" @click="ask('start', row.name)">
+									<template #icon><NcTowerIcon name="play" :size="18" /></template>
+									Start
+								</NcActionButton>
+							<NcActionButton v-if="row.mutable" @click="ask('kill', row.name)">
+									<template #icon><NcTowerIcon name="x" :size="18" /></template>
+									Kill
+								</NcActionButton>
+							<NcActionButton v-if="row.mutable" @click="ask('recreate', row.name)">
+									<template #icon><NcTowerIcon name="rotate" :size="18" /></template>
+									Recreate
+								</NcActionButton>
+							<NcActionButton v-if="row.mutable" @click="openExec(row.name)">
+									<template #icon><NcTowerIcon name="terminal" :size="18" /></template>
+									Exec
+								</NcActionButton>
 						</NcActions>
 					</div>
 				</template>
 			</DataTable>
-			<p class="tower-muted">{{ lockedCount }} container(s) outside the sidecar allowlist. {{ lockedHint }}</p>
+			<p class="nc-tower-muted">{{ lockedCount }} container(s) outside the sidecar allowlist. {{ lockedHint }}</p>
 		</Section>
 
 		<Section id="ops.stacks"
@@ -64,14 +88,29 @@
 				<template #cell-services="{ row }">{{ (row.services || []).join(', ') || '—' }}</template>
 				<template #cell-running_hint="{ row }">{{ row.running_hint ? 'running' : '—' }}</template>
 				<template #cell-actions="{ row }">
-					<div class="tower-actions-cell">
+					<div class="nc-tower-actions-cell">
 						<NcButton v-if="row.preview" type="tertiary" @click="showPreview(row)">Preview</NcButton>
 						<NcActions v-if="row.file" :aria-label="`Actions for ${row.file}`">
-							<NcActionButton @click="askStack('up', row)">Up</NcActionButton>
-							<NcActionButton @click="askStack('restart', row)">Restart</NcActionButton>
-							<NcActionButton @click="askStack('pull', row)">Pull</NcActionButton>
-							<NcActionButton @click="askStack('rebuild', row)">Rebuild</NcActionButton>
-							<NcActionButton @click="askStack('down', row)">Down</NcActionButton>
+							<NcActionButton @click="askStack('up', row)">
+									<template #icon><NcTowerIcon name="arrow-up" :size="18" /></template>
+									Up
+								</NcActionButton>
+							<NcActionButton @click="askStack('restart', row)">
+									<template #icon><NcTowerIcon name="refresh" :size="18" /></template>
+									Restart
+								</NcActionButton>
+							<NcActionButton @click="askStack('pull', row)">
+									<template #icon><NcTowerIcon name="download" :size="18" /></template>
+									Pull
+								</NcActionButton>
+							<NcActionButton @click="askStack('rebuild', row)">
+									<template #icon><NcTowerIcon name="hammer" :size="18" /></template>
+									Rebuild
+								</NcActionButton>
+							<NcActionButton @click="askStack('down', row)">
+									<template #icon><NcTowerIcon name="arrow-down" :size="18" /></template>
+									Down
+								</NcActionButton>
 						</NcActions>
 					</div>
 				</template>
@@ -86,22 +125,22 @@
 			:loading="loading.host"
 			:error="errors.host"
 			@refresh="refresh('host')">
-			<div class="tower-chips">
-				<span class="tower-chip">CPU {{ host.cpu_pct != null ? `${host.cpu_pct}%` : '—' }}</span>
-				<span class="tower-chip">load {{ (host.loadavg || []).join(' / ') || '—' }}</span>
-				<span class="tower-chip">mem {{ fmt.meminfo(host.mem_available) }} free</span>
-				<span class="tower-chip">swap {{ fmt.meminfo(host.swap_free) }} free</span>
-				<span class="tower-chip">pkg {{ host.package_temp_c != null ? `${host.package_temp_c}°C` : '—' }}</span>
-				<span class="tower-chip">up {{ fmt.duration(host.uptime_s) }}</span>
+			<div class="nc-tower-chips">
+				<span class="nc-tower-chip">CPU {{ host.cpu_pct != null ? `${host.cpu_pct}%` : '—' }}</span>
+				<span class="nc-tower-chip">load {{ (host.loadavg || []).join(' / ') || '—' }}</span>
+				<span class="nc-tower-chip">mem {{ fmt.meminfo(host.mem_available) }} free</span>
+				<span class="nc-tower-chip">swap {{ fmt.meminfo(host.swap_free) }} free</span>
+				<span class="nc-tower-chip">pkg {{ host.package_temp_c != null ? `${host.package_temp_c}°C` : '—' }}</span>
+				<span class="nc-tower-chip">up {{ fmt.duration(host.uptime_s) }}</span>
 			</div>
 			<DataTable :columns="diskColumns" :rows="host.disks || []" row-key="path" empty-text="No disks">
 				<template #cell-used_pct="{ row }">
 					<UsageBar v-if="!row.error" :percent="row.used_pct" />
-					<span v-else class="tower-bad">{{ row.error }}</span>
+					<span v-else class="nc-tower-bad">{{ row.error }}</span>
 				</template>
 				<template #cell-used_b="{ row }">{{ fmt.bytes(row.used_b) }} / {{ fmt.bytes(row.total_b) }}</template>
 			</DataTable>
-			<p class="tower-muted">Interfaces: {{ ifaceLine || '—' }}</p>
+			<p class="nc-tower-muted">Interfaces: {{ ifaceLine || '—' }}</p>
 		</Section>
 
 		<Section id="ops.smart"
@@ -115,23 +154,23 @@
 			<template v-else>
 				<DataTable :columns="smartColumns" :rows="smart.disks || []" row-key="device" empty-text="No disks">
 					<template #cell-health="{ row }">
-						<span :class="row.health === 'PASS' ? 'tower-good' : 'tower-bad'">{{ row.health }}</span>
+						<span :class="row.health === 'PASS' ? 'nc-tower-good' : 'nc-tower-bad'">{{ row.health }}</span>
 					</template>
 					<template #cell-temp_c="{ row }">{{ row.temp_c != null ? `${row.temp_c}°C` : '—' }}</template>
 					<template #cell-power_on_hours="{ row }">
-						<span :class="{ 'tower-warn-text': row.power_on_hours > 43800 }">
+						<span :class="{ 'nc-tower-warn-text': row.power_on_hours > 43800 }">
 							{{ row.power_on_hours != null ? `${row.power_on_hours} h (${fmt.years(row.power_on_hours)})` : '—' }}
 						</span>
 					</template>
 				</DataTable>
-				<h4 class="tower-subhead">Network mounts</h4>
+				<h4 class="nc-tower-subhead">Network mounts</h4>
 				<DataTable :columns="nasColumns" :rows="smart.nas_mounts || []" row-key="path" empty-text="No network mounts">
 					<template #cell-ok="{ row }">
-						<span :class="row.ok ? 'tower-good' : 'tower-bad'">{{ row.ok ? 'OK' : 'down' }}</span>
+						<span :class="row.ok ? 'nc-tower-good' : 'nc-tower-bad'">{{ row.ok ? 'OK' : 'down' }}</span>
 					</template>
 					<template #cell-used_pct="{ row }"><UsageBar :percent="row.used_pct" /></template>
 				</DataTable>
-				<p class="tower-muted">Full SMART attributes stay in Webmin → SMART Health.</p>
+				<p class="nc-tower-muted">Full SMART attributes stay in Webmin → SMART Health.</p>
 			</template>
 		</Section>
 
@@ -150,7 +189,7 @@
 					<template #cell-temp_c="{ row }">{{ row.temp_c }}°C</template>
 					<template #cell-power_draw_w="{ row }">{{ row.power_draw_w }} / {{ row.power_limit_w }} W</template>
 				</DataTable>
-				<h4 v-if="(gpu.processes || []).length" class="tower-subhead">Compute processes</h4>
+				<h4 v-if="(gpu.processes || []).length" class="nc-tower-subhead">Compute processes</h4>
 				<DataTable v-if="(gpu.processes || []).length"
 					:columns="gpuProcColumns"
 					:rows="gpu.processes"
@@ -167,17 +206,17 @@
 			:error="errors.fan"
 			@refresh="refresh('fan')">
 			<template v-if="!fan.unavailable">
-				<div class="tower-toolbar">
+				<div class="nc-tower-toolbar">
 					<NcTextField :value.sync="fanSpeed" type="number" label="All GPU fans %" :label-visible="true" />
 					<NcButton type="secondary" @click="askFan('set-all-speeds')">Set all</NcButton>
 					<NcButton type="tertiary" @click="askFan('set-auto')">Set auto</NcButton>
 				</div>
-				<pre class="tower-pre">{{ fanStatusText }}</pre>
+				<pre class="nc-tower-pre">{{ fanStatusText }}</pre>
 			</template>
 			<NcNoteCard v-else type="warning">GPU fan control unavailable: {{ fan.reason }}</NcNoteCard>
-			<h4 class="tower-subhead">Chassis fans (read only)</h4>
+			<h4 class="nc-tower-subhead">Chassis fans (read only)</h4>
 			<DataTable :columns="chassisColumns" :rows="chassisFan.fans || []" empty-text="No fans detected" />
-			<p class="tower-muted">Chassis PWM writes stay in Webmin → Fan Control.</p>
+			<p class="nc-tower-muted">Chassis PWM writes stay in Webmin → Fan Control.</p>
 		</Section>
 
 		<Section id="ops.engine"
@@ -186,12 +225,12 @@
 			:loading="loading.engine"
 			:error="errors.engine"
 			@refresh="refresh('engine')">
-			<div class="tower-chips">
-				<span class="tower-chip">{{ engine.Name || '—' }}</span>
-				<span class="tower-chip">v{{ engine.ServerVersion || '—' }}</span>
-				<span class="tower-chip">{{ engine.ContainersRunning ?? '—' }} running</span>
-				<span class="tower-chip">{{ engine.Images ?? '—' }} images</span>
-				<span class="tower-chip">{{ engine.OperatingSystem || '—' }}</span>
+			<div class="nc-tower-chips">
+				<span class="nc-tower-chip">{{ engine.Name || '—' }}</span>
+				<span class="nc-tower-chip">v{{ engine.ServerVersion || '—' }}</span>
+				<span class="nc-tower-chip">{{ engine.ContainersRunning ?? '—' }} running</span>
+				<span class="nc-tower-chip">{{ engine.Images ?? '—' }} images</span>
+				<span class="nc-tower-chip">{{ engine.OperatingSystem || '—' }}</span>
 			</div>
 			<DataTable :columns="dfColumns" :rows="dfRows" empty-text="No disk usage data" />
 		</Section>
@@ -202,18 +241,18 @@
 			:loading="loading.images"
 			:error="errors.images"
 			@refresh="refresh('images')">
-			<div class="tower-toolbar">
+			<div class="nc-tower-toolbar">
 				<NcTextField :value.sync="pullRef" label="Image reference" placeholder="repo/name:tag" />
 				<NcButton type="secondary" :disabled="!pullRef" @click="askPull(pullRef)">Pull</NcButton>
 			</div>
 			<DataTable :columns="imageColumns" :rows="imageRows" row-key="ref" default-sort="ref" empty-text="No images">
 				<template #cell-actions="{ row }">
-					<div class="tower-actions-cell">
+					<div class="nc-tower-actions-cell">
 						<NcButton type="tertiary" :disabled="!row.ref" @click="askPull(row.ref)">Pull</NcButton>
 					</div>
 				</template>
 			</DataTable>
-			<p v-if="imageTruncated" class="tower-muted">Showing first 80 of {{ (images.images || []).length }}.</p>
+			<p v-if="imageTruncated" class="nc-tower-muted">Showing first 80 of {{ (images.images || []).length }}.</p>
 		</Section>
 
 		<Section id="ops.volumes"
@@ -224,7 +263,7 @@
 			@refresh="refresh('volumes')">
 			<DataTable :columns="volumeColumns" :rows="volumeRows" row-key="name" default-sort="name" empty-text="No volumes">
 				<template #cell-actions="{ row }">
-					<div class="tower-actions-cell">
+					<div class="nc-tower-actions-cell">
 						<NcButton type="tertiary" @click="inspectVolume(row.name)">Inspect</NcButton>
 					</div>
 				</template>
@@ -239,7 +278,7 @@
 			@refresh="refresh('networks')">
 			<DataTable :columns="networkColumns" :rows="networkRows" row-key="name" default-sort="name" empty-text="No networks">
 				<template #cell-actions="{ row }">
-					<div class="tower-actions-cell">
+					<div class="nc-tower-actions-cell">
 						<NcButton type="tertiary" @click="inspectNetwork(row.name)">Inspect</NcButton>
 					</div>
 				</template>
@@ -252,13 +291,13 @@
 			:loading="loading.events"
 			:error="errors.events"
 			@refresh="refresh('events')">
-			<div class="tower-toolbar">
+			<div class="nc-tower-toolbar">
 				<NcCheckboxRadioSwitch :checked.sync="showProbes" type="switch">
 					Include healthcheck probes
 				</NcCheckboxRadioSwitch>
 			</div>
 			<DataTable :columns="eventColumns" :rows="eventRows" empty-text="No recent events" />
-			<p v-if="events.probes_hidden" class="tower-muted">
+			<p v-if="events.probes_hidden" class="nc-tower-muted">
 				{{ events.probes_hidden }} healthcheck probe event(s) hidden.
 			</p>
 		</Section>
@@ -271,12 +310,12 @@
 			:loading="loading.inbox"
 			:error="errors.inbox"
 			@refresh="refresh('inbox')">
-			<p :class="backup.ok ? 'tower-good' : 'tower-warn-text'">
+			<p :class="backup.ok ? 'nc-tower-good' : 'nc-tower-warn-text'">
 				<strong>{{ backup.status || '—' }}</strong> — {{ backup.summary || '' }}
 			</p>
-			<p class="tower-muted">{{ backup.name || 'no backup file' }} · {{ fmt.time(backup.mtime) }}{{ backup.stale ? ' · stale' : '' }}</p>
+			<p class="nc-tower-muted">{{ backup.name || 'no backup file' }} · {{ fmt.time(backup.mtime) }}{{ backup.stale ? ' · stale' : '' }}</p>
 			<NcButton type="secondary" @click="askBackup">Run backup now</NcButton>
-			<p class="tower-muted">Deleting backups stays in Webmin → Backup Mgr.</p>
+			<p class="nc-tower-muted">Deleting backups stays in Webmin → Backup Mgr.</p>
 		</Section>
 
 		<Section id="ops.inbox"
@@ -288,12 +327,12 @@
 			:error="errors.inbox"
 			@refresh="refresh('inbox')">
 			<template v-if="(inbox.critical_recent || []).length">
-				<h4 class="tower-subhead tower-bad">Critical</h4>
+				<h4 class="nc-tower-subhead tower-bad">Critical</h4>
 				<DataTable :columns="inboxColumns" :rows="inbox.critical_recent" empty-text="None">
 					<template #cell-mtime="{ row }">{{ fmt.time(row.mtime) }}</template>
 				</DataTable>
 			</template>
-			<h4 class="tower-subhead">Recent</h4>
+			<h4 class="nc-tower-subhead">Recent</h4>
 			<DataTable :columns="inboxColumns" :rows="(inbox.inbox_recent || []).slice(0, 25)" empty-text="Empty">
 				<template #cell-mtime="{ row }">{{ fmt.time(row.mtime) }}</template>
 			</DataTable>
@@ -324,7 +363,7 @@
 			<NcNoteCard type="info">
 				Shells and destructive binaries are refused by the sidecar allowlist.
 			</NcNoteCard>
-			<pre v-if="exec.out" class="tower-pre">{{ exec.out }}</pre>
+			<pre v-if="exec.out" class="nc-tower-pre">{{ exec.out }}</pre>
 			<template #actions>
 				<NcButton type="tertiary" @click="exec.open = false">Close</NcButton>
 				<NcButton type="primary" :disabled="exec.busy" @click="runExec">Run</NcButton>
@@ -344,6 +383,7 @@ import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
 import NcTextField from '@nextcloud/vue/dist/Components/NcTextField.js'
 
 import AttentionList from '../components/AttentionList.vue'
+import NcTowerIcon from '../components/NcTowerIcon.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DataTable from '../components/DataTable.vue'
 import OutputDialog from '../components/OutputDialog.vue'
@@ -361,7 +401,7 @@ const LOCKED_HINT = 'Widen NC_TOWER_CONTAINER_LOG_ALLOW for read-only logs witho
 export default {
 	name: 'Ops',
 	components: {
-		AttentionList, ConfirmDialog, DataTable, OutputDialog, Section, StatusBanner, UsageBar,
+		AttentionList, ConfirmDialog, DataTable, NcTowerIcon, OutputDialog, Section, StatusBanner, UsageBar,
 		NcActionButton, NcActions, NcButton, NcCheckboxRadioSwitch, NcDialog, NcNoteCard, NcTextField,
 	},
 	data() {
@@ -925,7 +965,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-toolbar {
+.nc-tower-toolbar {
 	display: flex;
 	align-items: flex-end;
 	gap: 8px;
@@ -934,13 +974,13 @@ export default {
 	max-width: 640px;
 }
 
-.tower-subhead {
+.nc-tower-subhead {
 	margin: 16px 0 6px;
 	font-size: 0.95em;
 	color: var(--color-text-maxcontrast);
 }
 
-.tower-pre {
+.nc-tower-pre {
 	margin: 8px 0 0;
 	max-height: 220px;
 	overflow: auto;
@@ -952,7 +992,7 @@ export default {
 	white-space: pre-wrap;
 }
 
-.tower-state {
+.nc-tower-state {
 	text-transform: capitalize;
 
 	&--running { color: var(--color-success); }
@@ -960,7 +1000,7 @@ export default {
 	&--paused { color: var(--color-warning); }
 }
 
-.tower-good { color: var(--color-success); }
-.tower-bad { color: var(--color-error); }
-.tower-warn-text { color: var(--color-warning); }
+.nc-tower-good { color: var(--color-success); }
+.nc-tower-bad { color: var(--color-error); }
+.nc-tower-warn-text { color: var(--color-warning); }
 </style>

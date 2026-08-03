@@ -1,7 +1,7 @@
 <template>
-	<div class="tower-view">
+	<div class="nc-tower-view">
 		<h2>Host</h2>
-		<p class="tower-view__lead">
+		<p class="nc-tower-view__lead">
 			Read-only host glance plus allowlisted service restarts. Editing users, firewall
 			rules, cron and packages stays in Webmin.
 		</p>
@@ -13,18 +13,18 @@
 			:error="errors.mounts"
 			default-open
 			@refresh="refresh('mounts')">
-			<h4 class="tower-subhead">Watched paths</h4>
+			<h4 class="nc-tower-subhead">Watched paths</h4>
 			<DataTable :columns="watchedColumns" :rows="mounts.interesting || []" row-key="path" empty-text="None">
 				<template #cell-used_pct="{ row }">
 					<UsageBar v-if="!row.error" :percent="row.used_pct" />
-					<span v-else class="tower-bad">{{ row.error }}</span>
+					<span v-else class="nc-tower-bad">{{ row.error }}</span>
 				</template>
 				<template #cell-used_b="{ row }">{{ fmt.bytes(row.used_b) }} / {{ fmt.bytes(row.total_b) }}</template>
 				<template #cell-fstype="{ row }">{{ row.mount ? row.mount.fstype : '—' }}</template>
 				<template #cell-device="{ row }">{{ row.mount ? row.mount.device : '—' }}</template>
 			</DataTable>
-			<h4 class="tower-subhead">All mounts</h4>
-			<div class="tower-toolbar">
+			<h4 class="nc-tower-subhead">All mounts</h4>
+			<div class="nc-tower-toolbar">
 				<NcCheckboxRadioSwitch :checked.sync="showAllMounts" type="switch">
 					Show container and pseudo filesystems ({{ (mounts.mounts || []).length }} total)
 				</NcCheckboxRadioSwitch>
@@ -51,7 +51,7 @@
 				row-key="name"
 				default-sort="name"
 				empty-text="Everything up to date" />
-			<p class="tower-muted">Applying updates stays in Webmin → Software Packages.</p>
+			<p class="nc-tower-muted">Applying updates stays in Webmin → Software Packages.</p>
 		</Section>
 
 		<Section id="host.proc"
@@ -68,10 +68,10 @@
 				empty-text="None">
 				<template #cell-rss_kb="{ row }">{{ fmt.bytes((row.rss_kb || 0) * 1024) }}</template>
 				<template #cell-command="{ row }">
-					<span class="tower-cmd" :title="row.command">{{ row.command }}</span>
+					<span class="nc-tower-cmd" :title="row.command">{{ row.command }}</span>
 				</template>
 			</DataTable>
-			<p class="tower-muted">Killing processes stays out of Control Tower.</p>
+			<p class="nc-tower-muted">Killing processes stays out of Control Tower.</p>
 		</Section>
 
 		<Section id="host.systemd"
@@ -85,16 +85,19 @@
 			<NcNoteCard v-if="systemd.unavailable" type="warning">Unavailable: {{ systemd.reason }}</NcNoteCard>
 			<DataTable v-else :columns="systemdColumns" :rows="systemd.units || []" row-key="unit" empty-text="None">
 				<template #cell-active="{ row }">
-					<span :class="row.active === 'active' ? 'tower-good' : 'tower-bad'">{{ row.active }}</span>
+					<span :class="row.active === 'active' ? 'nc-tower-good' : 'nc-tower-bad'">{{ row.active }}</span>
 				</template>
 				<template #cell-user="{ row }">{{ row.user ? 'user bus' : 'system' }}</template>
 				<template #cell-actions="{ row }">
-					<div class="tower-actions-cell">
-						<NcButton type="secondary" @click="askRestart(row.unit)">Restart</NcButton>
+					<div class="nc-tower-actions-cell">
+						<NcButton type="secondary" @click="askRestart(row.unit)">
+							<template #icon><NcTowerIcon name="refresh" :size="18" /></template>
+							Restart
+						</NcButton>
 					</div>
 				</template>
 			</DataTable>
-			<p class="tower-muted">Only units in NC_TOWER_SYSTEMD_ALLOW can be restarted.</p>
+			<p class="nc-tower-muted">Only units in NC_TOWER_SYSTEMD_ALLOW can be restarted.</p>
 		</Section>
 
 		<Section id="host.cron"
@@ -104,17 +107,17 @@
 			:error="errors.cron"
 			@refresh="refresh('cron')">
 			<NcNoteCard v-if="cron.error" type="warning">{{ cron.error }}</NcNoteCard>
-			<h4 class="tower-subhead">root crontab</h4>
-			<ul class="tower-list">
+			<h4 class="nc-tower-subhead">root crontab</h4>
+			<ul class="nc-tower-list">
 				<li v-for="(line, index) in cron.root_crontab || []" :key="index"><code>{{ line }}</code></li>
-				<li v-if="!(cron.root_crontab || []).length" class="tower-muted">empty</li>
+				<li v-if="!(cron.root_crontab || []).length" class="nc-tower-muted">empty</li>
 			</ul>
-			<h4 class="tower-subhead">/etc/cron.d</h4>
-			<ul class="tower-list">
+			<h4 class="nc-tower-subhead">/etc/cron.d</h4>
+			<ul class="nc-tower-list">
 				<li v-for="file in cron.cron_d_files || []" :key="file">{{ file }}</li>
-				<li v-if="!(cron.cron_d_files || []).length" class="tower-muted">none</li>
+				<li v-if="!(cron.cron_d_files || []).length" class="nc-tower-muted">none</li>
 			</ul>
-			<p class="tower-muted">Editing cron stays in Webmin.</p>
+			<p class="nc-tower-muted">Editing cron stays in Webmin.</p>
 		</Section>
 
 		<Section id="host.net"
@@ -123,7 +126,7 @@
 			:loading="loading.net"
 			:error="errors.net"
 			@refresh="refresh('net')">
-			<div class="tower-toolbar">
+			<div class="nc-tower-toolbar">
 				<NcCheckboxRadioSwitch :checked.sync="showAllIfaces" type="switch">
 					Show container interfaces ({{ (net.ifaces || []).length }} total)
 				</NcCheckboxRadioSwitch>
@@ -131,7 +134,7 @@
 			<DataTable :columns="netColumns" :rows="visibleIfaces" row-key="name" default-sort="name" empty-text="None">
 				<template #cell-addresses="{ row }">{{ fmt.addresses(row) || '—' }}</template>
 				<template #cell-state="{ row }">
-					<span :class="row.state === 'up' ? 'tower-good' : 'tower-muted'">{{ row.state || '—' }}</span>
+					<span :class="row.state === 'up' ? 'nc-tower-good' : 'nc-tower-muted'">{{ row.state || '—' }}</span>
 				</template>
 			</DataTable>
 		</Section>
@@ -150,6 +153,7 @@ import NcCheckboxRadioSwitch from '@nextcloud/vue/dist/Components/NcCheckboxRadi
 import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
 
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import NcTowerIcon from '../components/NcTowerIcon.vue'
 import DataTable from '../components/DataTable.vue'
 import Section from '../components/Section.vue'
 import UsageBar from '../components/UsageBar.vue'
@@ -167,7 +171,7 @@ const CONTAINER_IFACE = /^(veth|br-|docker|virbr)/
 
 export default {
 	name: 'Host',
-	components: { ConfirmDialog, DataTable, Section, UsageBar, NcButton, NcCheckboxRadioSwitch, NcNoteCard },
+	components: { ConfirmDialog, DataTable, NcTowerIcon, Section, UsageBar, NcButton, NcCheckboxRadioSwitch, NcNoteCard },
 	data() {
 		return {
 			fmt,
@@ -338,13 +342,13 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-subhead {
+.nc-tower-subhead {
 	margin: 16px 0 6px;
 	font-size: 0.95em;
 	color: var(--color-text-maxcontrast);
 }
 
-.tower-list {
+.nc-tower-list {
 	margin: 0;
 	padding-inline-start: 18px;
 
@@ -354,7 +358,7 @@ export default {
 	}
 }
 
-.tower-cmd {
+.nc-tower-cmd {
 	display: inline-block;
 	max-width: 46ch;
 	overflow: hidden;
@@ -363,6 +367,6 @@ export default {
 	vertical-align: bottom;
 }
 
-.tower-good { color: var(--color-success); }
-.tower-bad { color: var(--color-error); }
+.nc-tower-good { color: var(--color-success); }
+.nc-tower-bad { color: var(--color-error); }
 </style>

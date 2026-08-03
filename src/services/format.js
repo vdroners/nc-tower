@@ -54,6 +54,11 @@ export function duration(seconds) {
  * @return {string} years, one decimal
  */
 export function years(hours) {
+	// Number(null) and Number('') are both 0, which would render a drive of
+	// unknown age as "0 y" — indistinguishable from a brand-new one.
+	if (hours == null || hours === '') {
+		return '—'
+	}
 	const n = Number(hours)
 	return Number.isFinite(n) ? `${Math.round((n / 8760) * 10) / 10} y` : '—'
 }

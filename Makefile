@@ -58,6 +58,8 @@ gate-preflight:
 	bash "$(ROOT)tools/tower-preflight.sh"
 	@test -n "$$(docker ps -q -f name=$(CONTAINER))" || (echo "cloud_app not running" && exit 1)
 	docker exec $(CONTAINER) php $(REMOTE)/tools/tower-api-gates.php
+	@# G25 needs a real Nextcloud bootstrap to ask the router what a URL resolves to.
+	docker exec -u www-data $(CONTAINER) php $(REMOTE)/tools/tower-route-gates.php
 
 DATE ?= $(shell date +%F)
 bump-patch:

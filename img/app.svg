@@ -1,1 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="65" height="65" viewBox="0 0 24 24" fill="#ffffff"><g fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" color="currentColor"><path d="M2.5 12c0-4.478 0-6.718 1.391-8.109S7.521 2.5 12 2.5c4.478 0 6.718 0 8.109 1.391S21.5 7.521 21.5 12c0 4.478 0 6.718-1.391 8.109S16.479 21.5 12 21.5c-4.478 0-6.718 0-8.109-1.391S2.5 16.479 2.5 12m0-3h19M7 6h.009M11 6h.009"/><path d="M17 17a5 5 0 0 0-10 0m5.707-1.707l-1.414 1.414"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Control Tower">
+  <!-- radar sweep, broadcasting from the beacon -->
+  <path d="M62 20a30 30 0 0 1 21 21" fill="none" stroke="#06b6d4" stroke-width="7" stroke-linecap="round"/>
+  <path d="M60 35a15 15 0 0 1 10 10" fill="none" stroke="#06b6d4" stroke-width="7" stroke-linecap="round"/>
+  <!-- beacon -->
+  <circle cx="40" cy="14" r="6" fill="#06b6d4"/>
+  <!-- control cabin -->
+  <path d="M27 24h26l5 15H22z" fill="#0ea5e9"/>
+  <!-- mast -->
+  <path d="M31 39h18l5 41H26z" fill="#1e293b"/>
+  <!-- base -->
+  <rect x="18" y="80" width="44" height="9" rx="4" fill="#1e293b"/>
+</svg>

@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.10.0] - 2026-08-03
+
+Continuity test of front end against backend, plus alignment with the other Nextcloud
+apps in this estate. Plan: `docs/plans/control-tower-continuity-house-style.md`.
+
+### Fixed
+- **Container Exec and Recreate never worked.** `/tower/containers/{name}/{action}` was
+  declared ahead of the specific `/exec` and `/recreate` routes, so the router matched the
+  generic one first and `containerAction()` rejected both with `400 invalid_action`. The
+  placeholder is now constrained to `start|stop|restart|kill` and the specific routes come
+  first. Unknown actions are refused by the router instead of reaching the controller
+- `fmt.years(null)` rendered `0 y` — a drive of unknown age looked brand new. Caught by the
+  new test suite on its first run
+- Removed the `tower#stackUp` / `tower#stackDown` aliases, which `stackAction` shadowed
+
+### Added
+- **`NcTowerIcon.vue`** — inline-SVG registry matching the estate convention set by
+  `GcsIcon.vue` and `NcPrintIcon.vue` (Tabler paths, 24 viewBox, `stroke="currentColor"`,
+  name-keyed with a dot fallback). No icon library, as everywhere else in the estate
+- Icons on the seven nav tabs, section disclosure and refresh, table sort carets, and every
+  container / stack / user row action
+- **User editing is back.** The 1.9.0 rebuild dropped it while `edituser`, `saveuser` and
+  `userexists` stayed in PHP with no UI. Create now checks `userexists` before POSTing
+- vitest + happy-dom matching nc-print's setup; 40 tests covering every triage rule
+  threshold in `health.js` and the payload shapes `format.js` has to absorb
+- Gate **G25** resolves contested URLs through the real Nextcloud router — the only check
+  that catches route shadowing, since grepping `routes.php` cannot. Gate **G26** asserts the
+  house style: icon component present, no Unicode glyphs, `nc-tower-` prefix, tests present
+
+### Changed
+- CSS classes renamed `tower-*` → `nc-tower-*`, matching `nc-print-`, `nc-roomba-`,
+  `nc-litter-` and `nc-wg-`. Control Tower was the last app off-pattern
+- New `img/app.svg`: a Control Tower mark replacing upstream Admin Cockpit's generic window
+  glyph, which had never been rebranded
+
+### Removed
+- `img/app-dark.svg` and `img/infoLogCleaner.png`, both dead upstream leftovers.
+  `img/dummy.svg` stays — `AppsController` serves it for apps with no icon
+
 ## [1.9.2] - 2026-08-02
 
 Fixes found by auditing the deployed app against live data — every column of every

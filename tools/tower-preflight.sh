@@ -135,6 +135,26 @@ else
   echo "SKIP G23 template refs (node_modules not installed)"
 fi
 
+# --- G26 house style --------------------------------------------------------
+# The estate convention is an inline-SVG registry per app (GcsIcon, NcPrintIcon)
+# and nc-<app>- class prefixes. Control Tower used Unicode glyphs and a bare
+# tower- prefix until 1.10.0.
+check G26 "icon component present" test -f src/components/NcTowerIcon.vue
+if grep -rlP '[\x{25B4}\x{25B8}\x{25B2}\x{25BC}\x{25CE}\x{21BB}]' src/ --include=*.vue 2>/dev/null | grep -qv NcTowerIcon.vue; then
+  note_fail G26 "Unicode glyph used as an icon (use NcTowerIcon)"
+  grep -rlP '[\x{25B4}\x{25B8}\x{25B2}\x{25BC}\x{25CE}\x{21BB}]' src/ --include=*.vue | grep -v NcTowerIcon.vue | sed 's/^/    /'
+else
+  echo "PASS G26 no Unicode glyphs standing in for icons"
+fi
+if grep -rE '(="|\x27|\.|--)tower-' src/ --include=*.vue >/dev/null 2>&1; then
+  note_fail G26 "class prefix must be nc-tower-, not tower-"
+else
+  echo "PASS G26 classes use the nc-tower- prefix"
+fi
+check G26 "app icon rebranded off upstream" grep -q 'Control Tower' img/app.svg
+check G26 "vitest configured" test -f vitest.config.cjs
+check G26 "triage rules covered by tests" test -f src/__tests__/health.spec.js
+
 # --- G21 admin gating -------------------------------------------------------
 # Admin gating is by omission: Nextcloud requires admin unless a controller
 # method opts out. One stray attribute anywhere would expose host mutators,

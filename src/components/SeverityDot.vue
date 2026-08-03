@@ -1,5 +1,5 @@
 <template>
-	<span class="tower-dot" :class="`tower-dot--${level}`" :title="label" role="img" :aria-label="label" />
+	<span class="nc-tower-dot" :class="`nc-tower-dot--${level}`" :title="label" role="img" :aria-label="label" />
 </template>
 
 <script>
@@ -21,7 +21,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-dot {
+.nc-tower-dot {
 	display: inline-block;
 	width: 10px;
 	height: 10px;

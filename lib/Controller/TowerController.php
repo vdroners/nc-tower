@@ -285,15 +285,6 @@ class TowerController extends Controller {
 		return $this->requestJson('POST', '/stacks/' . $action, ['file' => $file], 180);
 	}
 
-	/** CSRF required — legacy aliases */
-	public function stackUp(): DataResponse {
-		return $this->stackAction('up');
-	}
-
-	public function stackDown(): DataResponse {
-		return $this->stackAction('down');
-	}
-
 	/** CSRF required */
 	public function fanSet(): DataResponse {
 		$body = $this->jsonBody();

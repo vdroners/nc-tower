@@ -49,9 +49,18 @@ return [
     ['name' => 'tower#containers', 'url' => '/tower/containers', 'verb' => 'GET'],
     ['name' => 'tower#containerLogs', 'url' => '/tower/containers/{name}/logs', 'verb' => 'GET'],
     ['name' => 'tower#containerInspect', 'url' => '/tower/containers/{name}/inspect', 'verb' => 'GET'],
-    ['name' => 'tower#containerAction', 'url' => '/tower/containers/{name}/{action}', 'verb' => 'POST'],
+    // Routes resolve in declaration order, so a {action} placeholder here would
+    // swallow /recreate and /exec and hand them to containerAction(), which
+    // rejects anything outside its allowlist with a 400. Both features were
+    // dead that way. Enumerate the verbs instead: nothing can shadow a sibling.
     ['name' => 'tower#containerRecreate', 'url' => '/tower/containers/{name}/recreate', 'verb' => 'POST'],
     ['name' => 'tower#containerExec', 'url' => '/tower/containers/{name}/exec', 'verb' => 'POST'],
+    [
+        'name' => 'tower#containerAction',
+        'url' => '/tower/containers/{name}/{action}',
+        'verb' => 'POST',
+        'requirements' => ['action' => 'start|stop|restart|kill'],
+    ],
     ['name' => 'tower#dockerInfo', 'url' => '/tower/docker/info', 'verb' => 'GET'],
     ['name' => 'tower#dockerDf', 'url' => '/tower/docker/df', 'verb' => 'GET'],
     ['name' => 'tower#dockerEvents', 'url' => '/tower/docker/events', 'verb' => 'GET'],
@@ -60,9 +69,12 @@ return [
     ['name' => 'tower#dockerVolumes', 'url' => '/tower/docker/volumes', 'verb' => 'GET'],
     ['name' => 'tower#dockerNetworks', 'url' => '/tower/docker/networks', 'verb' => 'GET'],
     ['name' => 'tower#stacks', 'url' => '/tower/stacks', 'verb' => 'GET'],
-    ['name' => 'tower#stackAction', 'url' => '/tower/stacks/{action}', 'verb' => 'POST'],
-    ['name' => 'tower#stackUp', 'url' => '/tower/stacks/up', 'verb' => 'POST'],
-    ['name' => 'tower#stackDown', 'url' => '/tower/stacks/down', 'verb' => 'POST'],
+    [
+        'name' => 'tower#stackAction',
+        'url' => '/tower/stacks/{action}',
+        'verb' => 'POST',
+        'requirements' => ['action' => 'up|down|restart|pull|rebuild'],
+    ],
     ['name' => 'tower#opsInbox', 'url' => '/tower/ops-inbox', 'verb' => 'GET'],
     ['name' => 'tower#backupRun', 'url' => '/tower/backup/run', 'verb' => 'POST'],
     ['name' => 'tower#tools', 'url' => '/tower/tools', 'verb' => 'GET'],

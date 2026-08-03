@@ -3,9 +3,9 @@
 		:name="title"
 		size="small"
 		@update:open="$emit('cancel')">
-		<p class="tower-confirm__message">{{ message }}</p>
+		<p class="nc-tower-confirm__message">{{ message }}</p>
 		<NcNoteCard v-if="danger" type="warning">This cannot be undone.</NcNoteCard>
-		<div v-if="phrase" class="tower-confirm__gate">
+		<div v-if="phrase" class="nc-tower-confirm__gate">
 			<label :for="inputId">Type <code>{{ phrase }}</code> to confirm</label>
 			<NcTextField :id="inputId"
 				:value.sync="typed"
@@ -68,7 +68,7 @@ export default {
 	},
 	computed: {
 		inputId() {
-			return `tower-confirm-${this._uid}`
+			return `nc-tower-confirm-${this._uid}`
 		},
 		satisfied() {
 			return !this.phrase || this.typed.trim() === this.phrase
@@ -92,7 +92,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-confirm {
+.nc-tower-confirm {
 	&__message {
 		margin: 0 0 10px;
 		overflow-wrap: anywhere;

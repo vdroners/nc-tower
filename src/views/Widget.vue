@@ -1,19 +1,19 @@
 <template>
-	<div class="tower-widget">
+	<div class="nc-tower-widget">
 		<NcLoadingIcon v-if="loading" :size="24" />
 		<template v-else>
-			<div class="tower-widget__verdict" :class="`tower-widget__verdict--${verdict.level}`">
+			<div class="nc-tower-widget__verdict" :class="`nc-tower-widget__verdict--${verdict.level}`">
 				<SeverityDot :level="verdict.level" />
 				<strong>{{ headline }}</strong>
 			</div>
-			<ul v-if="verdict.items.length" class="tower-widget__items">
+			<ul v-if="verdict.items.length" class="nc-tower-widget__items">
 				<li v-for="(item, index) in verdict.items.slice(0, 4)" :key="index">
 					<SeverityDot :level="item.severity" />
 					<span>{{ item.title }}</span>
 				</li>
 			</ul>
-			<p v-else class="tower-widget__facts">{{ facts }}</p>
-			<a class="tower-widget__link" :href="opsUrl">Open Control Tower →</a>
+			<p v-else class="nc-tower-widget__facts">{{ facts }}</p>
+			<a class="nc-tower-widget__link" :href="opsUrl">Open Control Tower →</a>
 		</template>
 	</div>
 </template>
@@ -66,7 +66,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-widget {
+.nc-tower-widget {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;

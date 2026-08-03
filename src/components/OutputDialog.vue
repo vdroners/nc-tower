@@ -1,11 +1,11 @@
 <template>
 	<NcDialog :open="open" :name="title" size="large" @update:open="$emit('close')">
-		<div class="tower-output__bar">
+		<div class="nc-tower-output__bar">
 			<slot name="bar" />
-			<span class="tower-output__spacer" />
+			<span class="nc-tower-output__spacer" />
 			<NcButton type="tertiary" @click="copy">Copy</NcButton>
 		</div>
-		<pre ref="body" class="tower-output__body" :class="{ 'is-wrapped': wrap }">{{ text || '(empty)' }}</pre>
+		<pre ref="body" class="nc-tower-output__body" :class="{ 'is-wrapped': wrap }">{{ text || '(empty)' }}</pre>
 	</NcDialog>
 </template>
 
@@ -66,7 +66,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-output {
+.nc-tower-output {
 	&__bar {
 		display: flex;
 		align-items: center;

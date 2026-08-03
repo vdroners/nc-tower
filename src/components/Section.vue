@@ -1,27 +1,27 @@
 <template>
-	<section class="tower-section" :class="{ 'tower-section--open': open }">
-		<header class="tower-section__head" @click="toggle">
-			<button class="tower-section__toggle"
+	<section class="nc-tower-section" :class="{ 'nc-tower-section--open': open }">
+		<header class="nc-tower-section__head" @click="toggle">
+			<button class="nc-tower-section__toggle"
 				type="button"
 				:aria-expanded="String(open)"
-				:aria-controls="`tower-body-${id}`">
-				<span class="tower-section__caret">{{ open ? '▾' : '▸' }}</span>
+				:aria-controls="`nc-tower-body-${id}`">
+				<NcTowerIcon :name="open ? 'chevron-down' : 'chevron-right'" :size="16" class="nc-tower-section__caret" />
 				<SeverityDot :level="severity" />
-				<span class="tower-section__title">{{ title }}</span>
+				<span class="nc-tower-section__title">{{ title }}</span>
 			</button>
-			<span class="tower-section__summary">{{ error ? error : summary }}</span>
-			<NcLoadingIcon v-if="loading" :size="18" class="tower-section__spinner" />
+			<span class="nc-tower-section__summary">{{ error ? error : summary }}</span>
+			<NcLoadingIcon v-if="loading" :size="18" class="nc-tower-section__spinner" />
 			<NcButton v-else
 				type="tertiary-no-background"
 				:aria-label="`Refresh ${title}`"
 				title="Refresh"
 				@click.stop="$emit('refresh')">
 				<template #icon>
-					<span class="tower-section__refresh" aria-hidden="true">↻</span>
+					<NcTowerIcon name="refresh" :size="18" />
 				</template>
 			</NcButton>
 		</header>
-		<div v-show="open" :id="`tower-body-${id}`" class="tower-section__body">
+		<div v-show="open" :id="`nc-tower-body-${id}`" class="nc-tower-section__body">
 			<NcNoteCard v-if="error" type="error">{{ error }}</NcNoteCard>
 			<slot v-else />
 		</div>
@@ -32,6 +32,7 @@
 import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
 import NcLoadingIcon from '@nextcloud/vue/dist/Components/NcLoadingIcon.js'
 import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
+import NcTowerIcon from './NcTowerIcon.vue'
 import SeverityDot from './SeverityDot.vue'
 
 /**
@@ -41,7 +42,7 @@ import SeverityDot from './SeverityDot.vue'
  */
 export default {
 	name: 'Section',
-	components: { NcButton, NcLoadingIcon, NcNoteCard, SeverityDot },
+	components: { NcButton, NcLoadingIcon, NcNoteCard, NcTowerIcon, SeverityDot },
 	props: {
 		id: {
 			type: String,
@@ -116,7 +117,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-section {
+.nc-tower-section {
 	border: 1px solid var(--color-border);
 	border-radius: var(--border-radius-large, 8px);
 	background: var(--color-main-background);
@@ -147,7 +148,6 @@ export default {
 
 	&__caret {
 		color: var(--color-text-maxcontrast);
-		width: 12px;
 	}
 
 	&__title {
@@ -164,11 +164,6 @@ export default {
 		white-space: nowrap;
 	}
 
-	&__refresh {
-		font-size: 16px;
-		line-height: 1;
-	}
-
 	&__spinner {
 		flex: 0 0 auto;
 		margin-inline-end: 8px;
@@ -181,6 +176,6 @@ export default {
 }
 
 @media (max-width: 720px) {
-	.tower-section__summary { display: none; }
+	.nc-tower-section__summary { display: none; }
 }
 </style>

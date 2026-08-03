@@ -1,12 +1,12 @@
 <template>
-	<div v-if="items.length" class="tower-attention">
-		<h3 class="tower-attention__title">Needs attention</h3>
-		<ul class="tower-attention__list">
-			<li v-for="(item, index) in items" :key="index" class="tower-attention__item">
+	<div v-if="items.length" class="nc-tower-attention">
+		<h3 class="nc-tower-attention__title">Needs attention</h3>
+		<ul class="nc-tower-attention__list">
+			<li v-for="(item, index) in items" :key="index" class="nc-tower-attention__item">
 				<SeverityDot :level="item.severity" />
-				<div class="tower-attention__text">
+				<div class="nc-tower-attention__text">
 					<strong>{{ item.title }}</strong>
-					<span v-if="item.detail" class="tower-attention__detail">{{ item.detail }}</span>
+					<span v-if="item.detail" class="nc-tower-attention__detail">{{ item.detail }}</span>
 				</div>
 			</li>
 		</ul>
@@ -29,7 +29,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-attention {
+.nc-tower-attention {
 	border: 1px solid var(--color-border);
 	border-radius: var(--border-radius-large, 8px);
 	background: var(--color-main-background);

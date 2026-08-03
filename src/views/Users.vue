@@ -1,7 +1,7 @@
 <template>
-	<div class="tower-view">
+	<div class="nc-tower-view">
 		<h2>Users</h2>
-		<p class="tower-view__lead">Accounts and groups on this Nextcloud instance.</p>
+		<p class="nc-tower-view__lead">Accounts and groups on this Nextcloud instance.</p>
 
 		<Section id="users.list"
 			title="Users"
@@ -10,23 +10,36 @@
 			:error="errors.data"
 			default-open
 			@refresh="refresh('data')">
-			<div class="tower-toolbar">
+			<div class="nc-tower-toolbar">
 				<NcTextField :value.sync="filter" label="Filter users" placeholder="Filter by id, name or email" />
-				<NcButton type="primary" @click="openCreate">New user</NcButton>
+				<NcButton type="primary" @click="openCreate">
+					<template #icon><NcTowerIcon name="plus" :size="18" /></template>
+					New user
+				</NcButton>
 			</div>
 			<DataTable :columns="userColumns" :rows="filteredUsers" row-key="uid" default-sort="uid" empty-text="No users">
 				<template #cell-isadmin="{ row }">
-					<span v-if="row.isadmin" class="tower-badge">admin</span>
-					<span v-else class="tower-muted">—</span>
+					<span v-if="row.isadmin" class="nc-tower-badge">admin</span>
+					<span v-else class="nc-tower-muted">—</span>
 				</template>
 				<template #cell-status="{ row }">
-					<span :class="row.status ? 'tower-muted' : 'tower-good'">{{ row.status ? 'never signed in' : 'active' }}</span>
+					<span :class="row.status ? 'nc-tower-muted' : 'nc-tower-good'">{{ row.status ? 'never signed in' : 'active' }}</span>
 				</template>
 				<template #cell-actions="{ row }">
-					<div class="tower-actions-cell">
+					<div class="nc-tower-actions-cell">
 						<NcActions :aria-label="`Actions for ${row.uid}`">
-							<NcActionButton @click="openNotify(row.uid, false)">Notify</NcActionButton>
-							<NcActionButton @click="askDelete(row)">Delete</NcActionButton>
+							<NcActionButton @click="openEdit(row)">
+								<template #icon><NcTowerIcon name="edit" :size="18" /></template>
+								Edit
+							</NcActionButton>
+							<NcActionButton @click="openNotify(row.uid, false)">
+								<template #icon><NcTowerIcon name="bell" :size="18" /></template>
+								Notify
+							</NcActionButton>
+							<NcActionButton @click="askDelete(row)">
+								<template #icon><NcTowerIcon name="trash" :size="18" /></template>
+								Delete
+							</NcActionButton>
 						</NcActions>
 					</div>
 				</template>
@@ -39,16 +52,22 @@
 			:loading="loading.data"
 			:error="errors.data"
 			@refresh="refresh('data')">
-			<div class="tower-toolbar">
+			<div class="nc-tower-toolbar">
 				<NcTextField :value.sync="newGroup" label="New group name" placeholder="group id" />
 				<NcButton type="secondary" :disabled="!newGroup.trim()" @click="addGroup">Add group</NcButton>
 			</div>
 			<DataTable :columns="groupColumns" :rows="data.groups || []" row-key="gid" default-sort="gid" empty-text="No groups">
 				<template #cell-actions="{ row }">
-					<div class="tower-actions-cell">
+					<div class="nc-tower-actions-cell">
 						<NcActions :aria-label="`Actions for ${row.gid}`">
-							<NcActionButton @click="openNotify(row.gid, true)">Notify group</NcActionButton>
-							<NcActionButton @click="askDeleteGroup(row)">Delete group</NcActionButton>
+							<NcActionButton @click="openNotify(row.gid, true)">
+								<template #icon><NcTowerIcon name="bell" :size="18" /></template>
+								Notify group
+							</NcActionButton>
+							<NcActionButton @click="askDeleteGroup(row)">
+								<template #icon><NcTowerIcon name="trash" :size="18" /></template>
+								Delete group
+							</NcActionButton>
 						</NcActions>
 					</div>
 				</template>
@@ -56,7 +75,7 @@
 		</Section>
 
 		<NcDialog :open="create.open" name="New user" size="normal" @update:open="create.open = false">
-			<div class="tower-form">
+			<div class="nc-tower-form">
 				<NcTextField :value.sync="create.uid" label="User ID" />
 				<NcTextField :value.sync="create.displayname" label="Display name" />
 				<NcTextField :value.sync="create.email" label="Email" type="email" />
@@ -67,6 +86,22 @@
 			<template #actions>
 				<NcButton type="tertiary" @click="create.open = false">Cancel</NcButton>
 				<NcButton type="primary" :disabled="!create.uid.trim() || create.busy" @click="submitCreate">Create</NcButton>
+			</template>
+		</NcDialog>
+
+		<NcDialog :open="edit.open" :name="`Edit ${edit.uid}`" size="normal" @update:open="edit.open = false">
+			<NcLoadingIcon v-if="edit.loading" :size="28" />
+			<div v-else class="nc-tower-form">
+				<NcTextField :value.sync="edit.displayname" label="Display name" />
+				<NcTextField :value.sync="edit.email" label="Email" type="email" />
+				<NcTextField :value.sync="edit.quota" label="Quota" placeholder="default quota / unlimited / 10 GB" />
+				<NcTextField :value.sync="edit.groups" label="Groups (comma separated)" />
+				<NcTextField :value.sync="edit.password" label="New password" type="password" placeholder="leave blank to keep current" />
+				<p class="nc-tower-muted">Storage in use: {{ edit.used || '—' }}</p>
+			</div>
+			<template #actions>
+				<NcButton type="tertiary" @click="edit.open = false">Cancel</NcButton>
+				<NcButton type="primary" :disabled="edit.busy || edit.loading" @click="submitEdit">Save</NcButton>
 			</template>
 		</NcDialog>
 
@@ -92,8 +127,10 @@ import NcActionButton from '@nextcloud/vue/dist/Components/NcActionButton.js'
 import NcActions from '@nextcloud/vue/dist/Components/NcActions.js'
 import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
 import NcDialog from '@nextcloud/vue/dist/Components/NcDialog.js'
+import NcLoadingIcon from '@nextcloud/vue/dist/Components/NcLoadingIcon.js'
 import NcTextField from '@nextcloud/vue/dist/Components/NcTextField.js'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import NcTowerIcon from '../components/NcTowerIcon.vue'
 import DataTable from '../components/DataTable.vue'
 import Section from '../components/Section.vue'
 import { get, post } from '../services/api.js'
@@ -101,7 +138,7 @@ import Poller from '../services/poll.js'
 
 export default {
 	name: 'Users',
-	components: { ConfirmDialog, DataTable, Section, NcActionButton, NcActions, NcButton, NcDialog, NcTextField },
+	components: { ConfirmDialog, DataTable, NcTowerIcon, Section, NcActionButton, NcActions, NcButton, NcDialog, NcLoadingIcon, NcTextField },
 	data() {
 		return {
 			data: {},
@@ -111,6 +148,10 @@ export default {
 			newGroup: '',
 			create: { open: false, uid: '', displayname: '', email: '', password: '', groups: '', quota: '', busy: false },
 			notify: { open: false, who: '', group: false, message: '' },
+			edit: {
+				open: false, loading: false, busy: false, uid: '', displayname: '', email: '',
+				quota: '', groups: '', password: '', admingroups: [], managerids: '', used: '',
+			},
 			confirm: { open: false, title: '', message: '', confirmLabel: 'Confirm', phrase: '', danger: false },
 			pendingAction: null,
 			userColumns: [
@@ -173,12 +214,69 @@ export default {
 				this.$set(this.loading, key, false)
 			}
 		},
+		async openEdit(row) {
+			this.edit = {
+				open: true, loading: true, busy: false, uid: row.uid, displayname: '', email: '',
+				quota: '', groups: '', password: '', admingroups: [], managerids: '', used: '',
+			}
+			try {
+				// edituser wraps its payload in a single-element array.
+				const data = await get(`/edituser/${encodeURIComponent(row.uid)}`)
+				const user = Array.isArray(data.user) ? data.user[0] : data.user
+				if (!user) {
+					throw new Error('user not found')
+				}
+				Object.assign(this.edit, {
+					displayname: user.displayname || '',
+					email: user.email || '',
+					quota: user.quota || '',
+					groups: (user.groups || []).join(', '),
+					admingroups: user.admingroups || [],
+					managerids: user.managerids || '',
+					used: user.used || '',
+				})
+			} catch (error) {
+				showError(error.message)
+				this.edit.open = false
+			} finally {
+				this.edit.loading = false
+			}
+		},
+		async submitEdit() {
+			this.edit.busy = true
+			try {
+				await post('/saveuser', {
+					uid: this.edit.uid,
+					displayname: this.edit.displayname,
+					// Empty password means "keep the current one" — saveuser skips it.
+					password: this.edit.password,
+					email: this.edit.email,
+					groups: this.edit.groups.split(',').map((g) => g.trim()).filter(Boolean),
+					admingroups: this.edit.admingroups,
+					quota: this.edit.quota,
+					managerids: this.edit.managerids,
+				})
+				showSuccess(`Saved ${this.edit.uid}`)
+				this.edit.open = false
+			} catch (error) {
+				showError(error.message)
+			} finally {
+				this.edit.busy = false
+				await this.poller.refresh('data')
+			}
+		},
 		openCreate() {
 			this.create = { open: true, uid: '', displayname: '', email: '', password: '', groups: '', quota: '', busy: false }
 		},
 		async submitCreate() {
 			this.create.busy = true
 			try {
+				const uid = this.create.uid.trim()
+				const exists = await get(`/userexists/${encodeURIComponent(uid)}`)
+				if (exists === true || exists?.exists === true || exists?.userexists === true) {
+					showError(`${uid} already exists`)
+					return
+				}
 				await post('/newuser', {
 					uid: this.create.uid.trim(),
 					displayname: this.create.displayname,
@@ -279,7 +377,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-toolbar {
+.nc-tower-toolbar {
 	display: flex;
 	align-items: flex-end;
 	gap: 8px;
@@ -288,14 +386,14 @@ export default {
 	max-width: 620px;
 }
 
-.tower-form {
+.nc-tower-form {
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
 	padding-bottom: 6px;
 }
 
-.tower-badge {
+.nc-tower-badge {
 	padding: 1px 8px;
 	border-radius: var(--border-radius-pill, 999px);
 	background: var(--color-primary-element);
@@ -303,5 +401,5 @@ export default {
 	font-size: 0.8em;
 }
 
-.tower-good { color: var(--color-success); }
+.nc-tower-good { color: var(--color-success); }
 </style>

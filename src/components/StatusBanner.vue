@@ -1,16 +1,16 @@
 <template>
-	<div class="tower-verdict" :class="`tower-verdict--${level}`">
-		<div class="tower-verdict__headline">
+	<div class="nc-tower-verdict" :class="`nc-tower-verdict--${level}`">
+		<div class="nc-tower-verdict__headline">
 			<SeverityDot :level="level" />
-			<strong class="tower-verdict__word">{{ headline }}</strong>
-			<span v-if="subtitle" class="tower-verdict__sub">{{ subtitle }}</span>
-			<span class="tower-verdict__spacer" />
-			<span v-if="updated" class="tower-verdict__stamp">updated {{ updated }}</span>
+			<strong class="nc-tower-verdict__word">{{ headline }}</strong>
+			<span v-if="subtitle" class="nc-tower-verdict__sub">{{ subtitle }}</span>
+			<span class="nc-tower-verdict__spacer" />
+			<span v-if="updated" class="nc-tower-verdict__stamp">updated {{ updated }}</span>
 			<NcButton type="secondary" :disabled="busy" @click="$emit('refresh')">
 				{{ busy ? 'Refreshing…' : 'Refresh all' }}
 			</NcButton>
 		</div>
-		<ul v-if="facts.length" class="tower-verdict__facts">
+		<ul v-if="facts.length" class="nc-tower-verdict__facts">
 			<li v-for="fact in facts" :key="fact">{{ fact }}</li>
 		</ul>
 	</div>
@@ -60,7 +60,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.tower-verdict {
+.nc-tower-verdict {
 	border: 1px solid var(--color-border);
 	border-inline-start: 4px solid var(--color-success);
 	border-radius: var(--border-radius-large, 8px);
