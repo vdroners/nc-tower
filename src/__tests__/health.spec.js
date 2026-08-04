@@ -68,14 +68,27 @@ describe('assess — SMART', () => {
 		expect(result.level).toBe(CRIT)
 	})
 
-	// Only meaningful since 1.8.2: before that the parser reported the next
-	// attribute row's ID, so /dev/sda read as 10 h against a true 60404 h.
-	it('warns on a drive past five years and escalates past seven', () => {
+	// 1.16.0: age alone is informational when SMART still PASSes.
+	it('ignores age on a PASS drive with clean sector counters', () => {
 		const fivePlus = assess({ smart: { disks: [{ device: '/dev/sda', health: 'PASS', power_on_hours: 50000 }] } })
-		expect(fivePlus.level).toBe(WARN)
+		expect(fivePlus.level).toBe(OK)
+		expect(find(fivePlus, 'years powered')).toBeFalsy()
 
 		const sevenPlus = assess({ smart: { disks: [{ device: '/dev/sda', health: 'PASS', power_on_hours: 62000 }] } })
-		expect(sevenPlus.level).toBe(CRIT)
+		expect(sevenPlus.level).toBe(OK)
+	})
+
+	it('still escalates age when SMART is not PASS or sectors are troubled', () => {
+		const failing = assess({
+			smart: { disks: [{ device: '/dev/sda', health: 'FAIL', power_on_hours: 50000 }] },
+		})
+		expect(find(failing, 'years powered')).toBeTruthy()
+
+		const realloc = assess({
+			smart: { disks: [{ device: '/dev/sda', health: 'PASS', power_on_hours: 50000, reallocated: 3 }] },
+		})
+		expect(realloc.level).toBe(WARN)
+		expect(find(realloc, 'years powered')).toBeTruthy()
 	})
 
 	it('leaves a young healthy drive alone', () => {
@@ -100,7 +113,25 @@ describe('assess — ops inbox and backups', () => {
 		expect(result.level).toBe(CRIT)
 	})
 
-	it('warns on recent warn-level inbox rows', () => {
+	it('prefers active_warnings over raw inbox_recent', () => {
+		const result = assess({
+			inbox: {
+				inbox_recent: [
+					{ monitor: 'base-station-freshness', status: 'warn' },
+					{ monitor: 'container-watchdog', status: 'warn' },
+				],
+				active_warnings: [{ monitor: 'container-watchdog', status: 'warn', count: 2 }],
+				critical_recent: [],
+				active_critical: [],
+			},
+		})
+		expect(result.level).toBe(WARN)
+		expect(find(result, '2 ops warning')).toBeTruthy()
+		expect(find(result, 'container-watchdog')).toBeTruthy()
+		expect(find(result, 'base-station')).toBeFalsy()
+	})
+
+	it('falls back to raw warn rows when active_warnings is absent', () => {
 		const result = assess({
 			inbox: {
 				inbox_recent: [
@@ -201,11 +232,28 @@ describe('assess — Nextcloud platform health', () => {
 })
 
 describe('assess — SMART age copy', () => {
-	it('mentions SMART still PASS when age threshold fires on a passing drive', () => {
+	it('does not nag age when SMART still PASS', () => {
 		const result = assess({
 			smart: { disks: [{ device: '/dev/sda', health: 'PASS', power_on_hours: 50000 }] },
 		})
-		expect(find(result, 'SMART still PASS')).toBeTruthy()
+		expect(find(result, 'SMART still PASS')).toBeFalsy()
+		expect(find(result, 'years powered')).toBeFalsy()
+	})
+})
+
+describe('assess — CPU package temp (1.16)', () => {
+	it('treats 56°C as OK and warns at 70°C', () => {
+		expect(assess({ host: { package_temp_c: 56 } }).level).toBe(OK)
+		expect(assess({ host: { package_temp_c: 72 } }).level).toBe(WARN)
+		expect(assess({ host: { package_temp_c: 86 } }).level).toBe(CRIT)
+	})
+})
+
+describe('assess — debug loglevel (1.16)', () => {
+	it('warns when Nextcloud loglevel is below 2', () => {
+		const result = assess({ system: { nc_loglevel: 0 } })
+		expect(find(result, 'Debug logging')).toBeTruthy()
+		expect(assess({ system: { nc_loglevel: 2 } }).items.filter((i) => /Debug logging/.test(i.title))).toHaveLength(0)
 	})
 })
 

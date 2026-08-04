@@ -4,7 +4,7 @@ Source of truth for Webmin custom modules + Portainer CE + `/media/4TB/ops` (her
 
 Disposition: **IN** · **EXPAND** · **DEEP_LINK** · **SKIP** · **Never** · **Debt**
 
-Program target (v1.15): standalone **day-ops** — Portainer/Webmin optional second opinion for Never/SKIP rows only.
+Program target (v1.16): standalone **day-ops** — Portainer/Webmin optional second opinion for Never/SKIP rows only.
 
 ## A. Nextcloud admin surfaces
 
@@ -29,7 +29,8 @@ Program target (v1.15): standalone **day-ops** — Portainer/Webmin optional sec
 | backup-mgr | IN | inventory + run + delete; restore stays manual |
 | fan-control | IN | GPU + chassis PWM (profiles/curves/pump safety; no history gauges) |
 | network-vpn | IN | ZT/WG/ifaces/ddclient/public IP + routes/DNS/listeners/ethtool (RO) |
-| host inventory | IN (1.15) | DMI/DIMM/PCIe/USB, lsblk/RAID, temps, posture, kernel log |
+| host inventory | IN (1.15–1.16) | DMI/DIMM/PCIe/USB, lsblk/RAID, temps+history, posture, kernel log; 1.16 viz |
+| containers UX | IN (1.16) | project groups, health/uptime fields, inline actions, active inbox |
 | ollama-mgr | IN | models list/pull/delete + VRAM |
 
 ### compose_dirs (pinned)

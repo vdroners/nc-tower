@@ -868,3 +868,71 @@ class SmartTrendSampler:
                 self.path.write_text("\n".join(lines[-self.max_lines:]) + "\n", encoding="utf-8")
         except OSError:
             pass
+
+
+_TEMP_HISTORY_LOCK = threading.Lock()
+
+
+class TempHistorySampler:
+    """Background package-temp ring for Host › Temperatures chart."""
+
+    def __init__(
+        self,
+        path: Path,
+        collect_fn: Callable[[], dict[str, Any]],
+        interval_s: int = 60,
+        max_lines: int = 1500,
+    ) -> None:
+        self.path = path
+        self.collect_fn = collect_fn
+        self.interval_s = interval_s
+        self.max_lines = max_lines
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._thread = threading.Thread(target=self._loop, name="temp-history", daemon=True)
+        self._thread.start()
+
+    def _loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                sample = self.collect_fn()
+                row = {"ts": time.time(), **sample}
+                with _TEMP_HISTORY_LOCK:
+                    self.path.parent.mkdir(parents=True, exist_ok=True)
+                    with self.path.open("a", encoding="utf-8") as stream:
+                        stream.write(json.dumps(row, separators=(",", ":")) + "\n")
+                    self._trim()
+            except Exception:  # noqa: BLE001
+                pass
+            self._stop.wait(self.interval_s)
+
+    def _trim(self) -> None:
+        try:
+            lines = self.path.read_text(encoding="utf-8", errors="replace").splitlines()
+            if len(lines) > self.max_lines:
+                self.path.write_text("\n".join(lines[-self.max_lines:]) + "\n", encoding="utf-8")
+        except OSError:
+            pass
+
+
+def temp_history_read(path: Path, hours: int = 24) -> dict[str, Any]:
+    hours = max(1, min(int(hours), 168))
+    cutoff = time.time() - hours * 3600
+    if not path.is_file():
+        return {"ok": True, "samples": [], "hours": hours}
+    samples = []
+    try:
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if float(row.get("ts") or 0) >= cutoff:
+                samples.append(row)
+    except OSError as exc:
+        return {"ok": False, "error": str(exc), "samples": []}
+    return {"ok": True, "samples": samples, "hours": hours, "ts": time.time()}

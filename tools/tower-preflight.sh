@@ -317,6 +317,21 @@ import sys, json
 d = json.load(sys.stdin)
 sys.exit(0 if d.get("ok") and "ntp" in d and isinstance(d.get("certs"), list) else 1)
 '
+  # --- G33 containers health/uptime fields (1.16.0) ---
+  payload_gate G33 /containers '
+import sys, json
+d = json.load(sys.stdin)
+rows = d.get("containers") or []
+sys.exit(0 if d.get("ok") and rows and all("health" in r and "uptime" in r for r in rows[:5]) else 1)
+'
+  # --- G34 ops-inbox active_warnings shape (1.16.0) ---
+  payload_gate G34 /ops/inbox-summary '
+import sys, json
+d = json.load(sys.stdin)
+aw = d.get("active_warnings")
+ac = d.get("active_critical")
+sys.exit(0 if isinstance(aw, list) and isinstance(ac, list) and isinstance(d.get("inbox_recent"), list) else 1)
+'
 fi
 
 # --- G32 NC admin routes registered (1.15.0) ---
@@ -327,6 +342,15 @@ if grep -q "ncAdmin#log" appinfo/routes.php \
   echo "PASS G32 NC admin routes + controller present"
 else
   note_fail G32 "ncadmin routes / NcAdminController missing"
+fi
+
+# --- G35 temperatures history + inbox archive routes (1.16.0) ---
+if grep -q "hostTemperaturesHistory" appinfo/routes.php \
+  && grep -q "opsInboxArchiveStale" appinfo/routes.php \
+  && grep -q "temperatures/history" appinfo/routes.php; then
+  echo "PASS G35 temperature history + inbox archive routes"
+else
+  note_fail G35 "temperatures/history or ops-inbox/archive-stale route missing"
 fi
 
 exit "$fail"

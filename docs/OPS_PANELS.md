@@ -1,23 +1,40 @@
-# Operator guide — Ops / Host / System panels (1.15.0)
+# Operator guide — Ops / Host / System panels (1.16.0)
 
 NC Tower covers day-to-day ops that used to require Webmin or Portainer.
-Webmin and Portainer stay as optional second opinions (Tools › **Break-glass —
-still needed**).
+Webmin and Portainer stay as optional second opinions under Tools ›
+**Legacy consoles — superseded by Tower**.
 
-## Host — hardware inventory (1.15)
+## Attention list (1.16)
 
-- **Hardware** — board / BIOS / product+serial, CPU with live governor + MHz,
-  OS/kernel, last boot, kernel taint chip, DIMM table, collapsible PCIe/USB.
-  **Copy as Markdown** / **Download JSON** builds a labeled inventory report
-  from hardware + storage payloads.
-- **Storage** — `lsblk` tree (model/serial/UUID), RAID/mdstat chip, NVMe temps.
-  Disk serial joins SMART rows.
-- **Temperatures** — flat hwmon + GPU + disk table (no gauges).
-- **Security** — logged-in users, recent logins (`last`), NTP sync, failed-SSH
-  24 h count, TLS cert expiry for https service probes (warn < 21 days).
-- **Kernel log** — `journalctl -k` warning+ tail with MCE / OOM / disk-reset tags.
-- Sections hide behind sidecar `/health` capabilities when the sidecar is older
-  than 1.15.0.
+- Findings can be **Snoozed** for 7 days (CRIT cannot). Banner severity uses
+  unsnoozed items only. Expand the `N snoozed` chip to unsnooze.
+- Inbox warnings count only **active** alerts (last 24 h, one per monitor).
+  **Archive stale (>48h)** moves old non-critical inbox files to `inbox/archive/`.
+- CPU package warn/crit is 70°C / 85°C. Healthy aged disks (SMART PASS) no longer
+  appear as attention items. Debug Nextcloud logging (`loglevel` &lt; 2) is warned.
+
+## Host — hardware inventory (1.15 + 1.16 viz)
+
+- **Hardware** — board / BIOS / product+serial, CPU topology chips, DIMM slot map,
+  OS/kernel, taint, PCIe/USB with class badges. Markdown/JSON export unchanged.
+- **Storage** — capacity map (segmented partition bars + RAID badges) above the
+  `lsblk` tree; NVMe temps.
+- **Temperatures** — TempStrip heat bars + 24 h package-temp chart (capability
+  `temperatures-history`); raw table in details.
+- **Security / Kernel log** — unchanged from 1.15.
+
+## Ops — Containers (1.16)
+
+- Grouped by compose project with collapse persistence; stack actions on the
+  group header when a compose file matches.
+- State chips: All / running / exited / unhealthy / restarting.
+- Inline Logs / Restart / Stop|Start; overflow for Kill / Recreate / Rename /
+  Exec / Inspect / Stats. Parsed stats + inspect summary preamble.
+- Docker disk usage remains under **Docker engine** (`/tower/docker/df`).
+
+## Ops — Network
+
+- NIC link chips (speed / duplex / driver) above routes / DNS / listeners tables.
 
 ## System — Nextcloud admin depth (1.15)
 

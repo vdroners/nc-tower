@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from chassis_fan import ChassisFanController
 from inventory import (
     SmartTrendSampler,
+    TempHistorySampler,
     collect_hardware,
     collect_kernel_log,
     collect_posture,
@@ -32,6 +33,7 @@ from inventory import (
     extend_network_depth,
     smart_history_read,
     smart_history_summarize,
+    temp_history_read,
 )
 from parity import (
     CAPABILITIES,
@@ -42,9 +44,11 @@ from parity import (
     apply_recreate_overrides,
     audit_tail,
     backup_path_contained,
+    dedupe_active_alerts,
     host_network_payload,
     ollama_delete,
     ollama_get,
+    parse_container_status,
     parse_smart_attributes,
     validate_container_name,
 )
@@ -141,6 +145,7 @@ _AUDIT_LOCK = threading.Lock()
 _PUBLIC_IP_CACHE: dict[str, Any] = {}
 _CHASSIS: ChassisFanController | None = None
 _SMART_SAMPLER: SmartTrendSampler | None = None
+_TEMP_SAMPLER: TempHistorySampler | None = None
 _META_RE = re.compile(r"[;|&$`]")
 _SAFE_EVENT_SINCE_RE = re.compile(r"^[0-9]{1,7}(?:s|m|h|d)?$")
 _FORBIDDEN_EXEC = {
@@ -1013,15 +1018,19 @@ def containers() -> dict[str, Any]:
     if result["exit"] != 0:
         return {"ok": False, "error": result["stderr"], "containers": [], "counts": {}}
     rows = []
-    counts = {"running": 0, "exited": 0, "paused": 0, "other": 0, "total": 0}
+    counts = {"running": 0, "exited": 0, "paused": 0, "unhealthy": 0, "other": 0, "total": 0}
     for item in _json_lines(result["stdout"]):
         if not isinstance(item, dict):
             continue
         name = str(item.get("Names") or item.get("Name") or "").lstrip("/").split(",")[0]
         state = str(item.get("State") or item.get("Status") or "unknown").lower()
         status = "running" if "running" in state else "exited" if "exited" in state else "paused" if "paused" in state else "other"
+        status_raw = str(item.get("Status") or "")
+        health, uptime = parse_container_status(status_raw)
         counts[status] += 1
         counts["total"] += 1
+        if health == "unhealthy":
+            counts["unhealthy"] += 1
         labels = item.get("Labels") or ""
         label_map = {}
         if isinstance(labels, str):
@@ -1033,7 +1042,9 @@ def containers() -> dict[str, Any]:
                 "name": name,
                 "id": str(item.get("ID") or item.get("Id") or "")[:12],
                 "status": status,
-                "status_raw": item.get("Status"),
+                "status_raw": status_raw,
+                "health": health,
+                "uptime": uptime,
                 "image": item.get("Image"),
                 "project": label_map.get("com.docker.compose.project", ""),
                 "service": label_map.get("com.docker.compose.service", ""),
@@ -2092,6 +2103,27 @@ def host_temperatures() -> dict[str, Any]:
     return collect_temperatures(chassis_status=chassis, gpu_payload=gpu, smart_payload=smart)
 
 
+def _temp_history_sample() -> dict[str, Any]:
+    return {
+        "package_temp_c": _package_temperature(),
+        "sensors": (host_temperatures().get("sensors") or [])[:20],
+    }
+
+
+def host_temperatures_history(hours: int = 24) -> dict[str, Any]:
+    path = OPS_ROOT / "state" / "temp-history.jsonl"
+    result = temp_history_read(path, hours=hours)
+    samples = result.get("samples") or []
+    temps = [s.get("package_temp_c") for s in samples if s.get("package_temp_c") is not None]
+    result["summary"] = {
+        "package_temp_min": min(temps) if temps else None,
+        "package_temp_now": temps[-1] if temps else _package_temperature(),
+        "package_temp_max": max(temps) if temps else None,
+        "samples": len(samples),
+    }
+    return result
+
+
 def host_posture() -> dict[str, Any]:
     targets = _csv_env("SERVICE_TARGETS", "", "NC_TOWER_SERVICE_TARGETS")
     try:
@@ -2264,6 +2296,29 @@ def ops_inbox_summary() -> dict[str, Any]:
             if path.suffix.lower() == ".json":
                 row.update(_parse_alert(path) or {})
             recent.append(row)
+    # Scan more than the recent-50 window so active_* reflects the full inbox age.
+    all_rows: list[dict[str, Any]] = []
+    if inbox.is_dir():
+        for path in inbox.iterdir():
+            if not path.is_file():
+                continue
+            row = {
+                "name": path.name,
+                "mtime": path.stat().st_mtime,
+                "size": path.stat().st_size,
+                "monitor": None,
+                "status": None,
+                "detail": None,
+            }
+            if path.suffix.lower() == ".json":
+                row.update(_parse_alert(path) or {})
+            all_rows.append(row)
+    active_warnings = dedupe_active_alerts(
+        all_rows or recent, statuses={"warn", "warning"}, max_age_s=24 * 3600
+    )
+    active_critical = dedupe_active_alerts(
+        all_rows or recent, statuses={"crit", "critical"}, max_age_s=24 * 3600
+    )
     critical = [
         row for row in recent if str(row.get("status") or "").lower() in {"crit", "critical"}
     ]
@@ -2276,12 +2331,54 @@ def ops_inbox_summary() -> dict[str, Any]:
         "ops_root": str(OPS_ROOT),
         "inbox_recent": recent,
         "critical_recent": critical,
+        "active_warnings": active_warnings,
+        "active_critical": active_critical,
         "backup": _backup_summary(),
         "port_audit_latest": (
             {"name": audits[0].name, "mtime": audits[0].stat().st_mtime} if audits else None
         ),
         "ts": time.time(),
     }
+
+
+def ops_inbox_archive_stale(max_age_hours: float = 48.0) -> dict[str, Any]:
+    """Move resolved (non-crit) inbox files older than max_age into inbox/archive/."""
+    inbox = OPS_ROOT / "inbox"
+    archive = inbox / "archive"
+    if not inbox.is_dir():
+        return {"ok": True, "moved": 0, "files": []}
+    try:
+        archive.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return {"ok": False, "error": str(exc), "http": 500}
+    cutoff = time.time() - max(1.0, float(max_age_hours)) * 3600
+    moved: list[str] = []
+    for path in list(inbox.iterdir()):
+        if not path.is_file():
+            continue
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if mtime >= cutoff:
+            continue
+        status = None
+        if path.suffix.lower() == ".json":
+            parsed = _parse_alert(path) or {}
+            status = str(parsed.get("status") or "").lower()
+        # Keep active critical alerts even if old — operator must see them.
+        if status in {"crit", "critical"}:
+            continue
+        dest = archive / path.name
+        if dest.exists():
+            dest = archive / f"{path.stem}-{int(mtime)}{path.suffix}"
+        try:
+            path.rename(dest)
+            moved.append(path.name)
+        except OSError:
+            continue
+    audit(f"ops-inbox archive-stale moved={len(moved)} max_age_h={max_age_hours}")
+    return {"ok": True, "moved": len(moved), "files": moved[:100], "ts": time.time()}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -2389,6 +2486,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, host_storage())
             elif path == "/host/temperatures":
                 self._send(200, host_temperatures())
+            elif path == "/host/temperatures/history":
+                try:
+                    hours = int((query.get("hours") or ["24"])[0])
+                except ValueError:
+                    hours = 24
+                self._send(200, host_temperatures_history(hours))
             elif path == "/host/posture":
                 self._send(200, host_posture())
             elif path == "/host/kernel-log":
@@ -2520,6 +2623,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/ops/backup/delete":
                 self._result(backup_delete(body))
                 return
+            if path == "/ops/inbox/archive-stale":
+                hours = float(body.get("max_age_hours") or 48)
+                self._result(ops_inbox_archive_stale(hours))
+                return
             if match := re.fullmatch(r"/jobs/([a-z-]+)", path):
                 self._result(job_start(match.group(1), body))
                 return
@@ -2576,6 +2683,17 @@ def main() -> None:
         audit("smart-trend sampler started")
     except Exception as exc:  # noqa: BLE001
         audit(f"smart-trend sampler error={exc}")
+    global _TEMP_SAMPLER
+    try:
+        _TEMP_SAMPLER = TempHistorySampler(
+            OPS_ROOT / "state" / "temp-history.jsonl",
+            _temp_history_sample,
+            interval_s=60,
+        )
+        _TEMP_SAMPLER.start()
+        audit("temp-history sampler started")
+    except Exception as exc:  # noqa: BLE001
+        audit(f"temp-history sampler error={exc}")
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True
     print(

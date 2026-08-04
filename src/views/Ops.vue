@@ -1,7 +1,7 @@
 <template>
 	<div class="nc-tower-view">
-		<StatusBanner :level="verdict.level"
-			:count="verdict.items.length"
+		<StatusBanner :level="bannerLevel"
+			:count="attentionPartition.visible.length"
 			:facts="facts"
 			:updated="updatedAt"
 			:busy="refreshingAll"
@@ -17,6 +17,16 @@
 			:error="errors.containers"
 			default-open
 			@refresh="refresh('containers')">
+			<div class="nc-tower-chips">
+				<button v-for="chip in containerStateChips"
+					:key="chip.id"
+					type="button"
+					class="nc-tower-chip nc-tower-chip--clickable"
+					:class="{ 'nc-tower-chip--active': containerStateFilter === chip.id }"
+					@click="setContainerStateFilter(chip.id)">
+					{{ chip.label }} ({{ chip.count }})
+				</button>
+			</div>
 			<div class="nc-tower-toolbar">
 				<NcTextField :value.sync="containerFilter"
 					label="Filter containers"
@@ -25,70 +35,158 @@
 					:show-trailing-button="containerFilter !== ''"
 					@trailing-button-click="containerFilter = ''" />
 			</div>
-			<DataTable :columns="containerColumns"
-				:rows="filteredContainers"
-				row-key="name"
-				default-sort="name"
-				empty-text="No containers">
-				<template #cell-status="{ row }">
-					<span class="nc-tower-state" :class="`nc-tower-state--${row.status}`">{{ row.status }}</span>
-				</template>
-				<template #cell-cpu="{ row }">{{ row.cpu || '—' }}</template>
-				<template #cell-trend="{ row }">
-					<Sparkline :samples="trends[row.name] || []" :label="`${row.name} CPU`" :max="100" />
-				</template>
-				<template #cell-ports="{ row }">{{ fmt.ports(row.ports) }}</template>
-				<template #cell-actions="{ row }">
-					<div class="nc-tower-actions-cell">
-						<span v-if="!row.mutable && !row.loggable" class="nc-tower-muted" :title="lockedHint">locked</span>
-						<NcActions v-else :aria-label="`Actions for ${row.name}`">
-							<NcActionButton v-if="row.loggable || row.mutable" @click="openLogs(row.name)">
-									<template #icon><NcTowerIcon name="file-text" :size="18" /></template>
-									Logs
-								</NcActionButton>
-							<NcActionButton v-if="row.loggable || row.mutable" @click="openInspect(row.name)">
-									<template #icon><NcTowerIcon name="search" :size="18" /></template>
-									Inspect
-								</NcActionButton>
-							<NcActionButton v-if="row.mutable" @click="ask('restart', row.name)">
-									<template #icon><NcTowerIcon name="refresh" :size="18" /></template>
-									Restart
-								</NcActionButton>
-							<NcActionButton v-if="row.mutable" @click="ask('stop', row.name)">
-									<template #icon><NcTowerIcon name="stop" :size="18" /></template>
-									Stop
-								</NcActionButton>
-							<NcActionButton v-if="row.mutable" @click="ask('start', row.name)">
-									<template #icon><NcTowerIcon name="play" :size="18" /></template>
-									Start
-								</NcActionButton>
-							<NcActionButton v-if="row.mutable" @click="ask('kill', row.name)">
-									<template #icon><NcTowerIcon name="x" :size="18" /></template>
-									Kill
-								</NcActionButton>
-							<NcActionButton v-if="row.mutable" @click="openRecreate(row.name)">
-									<template #icon><NcTowerIcon name="rotate" :size="18" /></template>
-									Recreate…
-								</NcActionButton>
-							<NcActionButton v-if="row.mutable" @click="openRename(row.name)">
-									<template #icon><NcTowerIcon name="edit" :size="18" /></template>
-									Rename…
-								</NcActionButton>
-							<NcActionButton v-if="row.loggable || row.mutable" @click="toggleStats(row.name)">
-									<template #icon><NcTowerIcon name="activity" :size="18" /></template>
-									{{ statsOpen[row.name] ? 'Hide stats' : 'Stats' }}
-								</NcActionButton>
-							<NcActionButton v-if="row.mutable" @click="openExec(row.name)">
-									<template #icon><NcTowerIcon name="terminal" :size="18" /></template>
-									Exec
-								</NcActionButton>
+			<p class="nc-tower-muted">
+				Docker disk usage is summarised in the
+				<a href="#ops.engine">Docker engine</a> section below.
+			</p>
+			<div v-for="group in containerGroups"
+				:key="group.project"
+				class="nc-tower-container-group">
+				<header class="nc-tower-container-group__head" @click="toggleProjectCollapse(group.project)">
+					<NcTowerIcon :name="isProjectCollapsed(group.project) ? 'chevron-right' : 'chevron-down'" :size="16" />
+					<strong>{{ group.project }}</strong>
+					<span class="nc-tower-muted">{{ group.running }}/{{ group.total }} running</span>
+					<span v-if="group.unhealthy" class="nc-tower-bad">{{ group.unhealthy }} unhealthy</span>
+					<div v-if="group.stack" class="nc-tower-container-group__stack" @click.stop>
+						<NcActions :aria-label="`Stack actions for ${group.project}`">
+							<NcActionButton @click="askStack('up', group.stack)">
+								<template #icon><NcTowerIcon name="arrow-up" :size="18" /></template>
+								Up
+							</NcActionButton>
+							<NcActionButton @click="askStack('restart', group.stack)">
+								<template #icon><NcTowerIcon name="refresh" :size="18" /></template>
+								Restart
+							</NcActionButton>
+							<NcActionButton @click="askStack('pull', group.stack)">
+								<template #icon><NcTowerIcon name="download" :size="18" /></template>
+								Pull
+							</NcActionButton>
+							<NcActionButton @click="askStack('rebuild', group.stack)">
+								<template #icon><NcTowerIcon name="hammer" :size="18" /></template>
+								Rebuild
+							</NcActionButton>
+							<NcActionButton @click="askStack('down', group.stack)">
+								<template #icon><NcTowerIcon name="arrow-down" :size="18" /></template>
+								Down
+							</NcActionButton>
 						</NcActions>
 					</div>
-				</template>
-			</DataTable>
+				</header>
+				<div v-show="!isProjectCollapsed(group.project)" class="nc-tower-container-group__body">
+					<DataTable :columns="containerColumns"
+						:rows="group.rows"
+						row-key="name"
+						default-sort="name"
+						empty-text="No containers">
+						<template #cell-health="{ row }">
+							<SeverityDot :level="containerHealthLevel(row)" />
+						</template>
+						<template #cell-status="{ row }">
+							<span class="nc-tower-state" :class="`nc-tower-state--${row.status}`">{{ row.status }}</span>
+						</template>
+						<template #cell-cpu="{ row }">
+							<UsageBar v-if="row.cpu_pct != null" :percent="row.cpu_pct" :warn="80" :crit="95" />
+							<span v-else>{{ row.cpu || '—' }}</span>
+						</template>
+						<template #cell-trend="{ row }">
+							<Sparkline :samples="trends[row.name] || []" :label="`${row.name} CPU`" :max="100" />
+						</template>
+						<template #cell-ports="{ row }">
+							<span v-if="!parsePortLinks(row.ports).length" class="nc-tower-muted">—</span>
+							<span v-else class="nc-tower-ports">
+								<span v-for="(link, idx) in parsePortLinks(row.ports)" :key="`${row.name}-${idx}`">
+									<span v-if="idx > 0">, </span>
+									<a v-if="link.href"
+										:href="link.href"
+										target="_blank"
+										rel="noopener noreferrer">{{ link.text }}</a>
+									<template v-else>{{ link.text }}</template>
+								</span>
+							</span>
+						</template>
+						<template #cell-actions="{ row }">
+							<div class="nc-tower-actions-cell">
+								<span v-if="!row.mutable && !row.loggable" class="nc-tower-muted" :title="lockedHint">locked</span>
+								<template v-else>
+									<NcButton v-if="row.loggable || row.mutable"
+										type="tertiary"
+										:aria-label="`Logs for ${row.name}`"
+										@click="openLogs(row.name)">
+										<template #icon><NcTowerIcon name="file-text" :size="18" /></template>
+									</NcButton>
+									<NcButton v-if="row.mutable && row.status === 'running'"
+										type="tertiary"
+										:aria-label="`Restart ${row.name}`"
+										@click="ask('restart', row.name)">
+										<template #icon><NcTowerIcon name="refresh" :size="18" /></template>
+									</NcButton>
+									<NcButton v-if="row.mutable && row.status === 'running'"
+										type="tertiary"
+										:aria-label="`Stop ${row.name}`"
+										@click="ask('stop', row.name)">
+										<template #icon><NcTowerIcon name="stop" :size="18" /></template>
+									</NcButton>
+									<NcButton v-if="row.mutable && row.status !== 'running'"
+										type="tertiary"
+										:aria-label="`Start ${row.name}`"
+										@click="ask('start', row.name)">
+										<template #icon><NcTowerIcon name="play" :size="18" /></template>
+									</NcButton>
+									<NcActions :aria-label="`More actions for ${row.name}`">
+										<NcActionButton v-if="row.loggable || row.mutable" @click="openInspect(row.name)">
+											<template #icon><NcTowerIcon name="search" :size="18" /></template>
+											Inspect
+										</NcActionButton>
+										<NcActionButton v-if="row.mutable" @click="ask('kill', row.name)">
+											<template #icon><NcTowerIcon name="x" :size="18" /></template>
+											Kill
+										</NcActionButton>
+										<NcActionButton v-if="row.mutable" @click="openRecreate(row.name)">
+											<template #icon><NcTowerIcon name="rotate" :size="18" /></template>
+											Recreate…
+										</NcActionButton>
+										<NcActionButton v-if="row.mutable" @click="openRename(row.name)">
+											<template #icon><NcTowerIcon name="edit" :size="18" /></template>
+											Rename…
+										</NcActionButton>
+										<NcActionButton v-if="row.loggable || row.mutable" @click="toggleStats(row.name)">
+											<template #icon><NcTowerIcon name="activity" :size="18" /></template>
+											{{ statsOpen[row.name] ? 'Hide stats' : 'Stats' }}
+										</NcActionButton>
+										<NcActionButton v-if="row.mutable" @click="openExec(row.name)">
+											<template #icon><NcTowerIcon name="terminal" :size="18" /></template>
+											Exec
+										</NcActionButton>
+									</NcActions>
+								</template>
+							</div>
+						</template>
+					</DataTable>
+				</div>
+			</div>
+			<p v-if="!containerGroups.length" class="nc-tower-muted">No containers match the current filter.</p>
 			<div v-for="(blob, name) in statsOpen" :key="`stats-${name}`" class="nc-tower-stats-panel">
 				<strong>{{ name }}</strong>
-				<pre class="nc-tower-pre">{{ blob }}</pre>
+				<template v-if="typeof blob === 'object' && blob !== null && !blob.error">
+					<div class="nc-tower-stats-bars">
+						<div v-if="blob.cpu != null" class="nc-tower-stats-bar">
+							<span class="nc-tower-muted">CPU</span>
+							<UsageBar :percent="blob.cpu" :warn="80" :crit="95" />
+						</div>
+						<div v-if="blob.mem != null" class="nc-tower-stats-bar">
+							<span class="nc-tower-muted">Memory</span>
+							<UsageBar :percent="blob.mem" :warn="85" :crit="95" />
+						</div>
+						<p v-if="blob.memUsage" class="nc-tower-muted">Mem usage: {{ blob.memUsage }}</p>
+						<p v-if="blob.net" class="nc-tower-muted">Net I/O: {{ blob.net }}</p>
+						<p v-if="blob.block" class="nc-tower-muted">Block I/O: {{ blob.block }}</p>
+					</div>
+					<details class="nc-tower-stats-raw">
+						<summary>Raw JSON</summary>
+						<pre class="nc-tower-pre">{{ JSON.stringify(blob.raw, null, 2) }}</pre>
+					</details>
+				</template>
+				<pre v-else class="nc-tower-pre">{{ typeof blob === 'string' ? blob : JSON.stringify(blob, null, 2) }}</pre>
 			</div>
 			<p class="nc-tower-muted">{{ lockedCount }} container(s) outside the sidecar allowlist. {{ lockedHint }}</p>
 		</Section>
@@ -212,6 +310,13 @@
 						<span :class="{ 'nc-tower-warn-text': row.temp_max != null && row.temp_max >= 55 }">
 							{{ row.temp_max != null ? `${row.temp_max}°C` : '—' }}
 						</span>
+					</template>
+					<template #cell-trend="{ row }">
+						<Sparkline v-if="(smartTempTrends[row.serial] || []).length"
+							:samples="smartTempTrends[row.serial]"
+							:label="`${row.device || row.serial} temp`"
+							:max="70" />
+						<span v-else class="nc-tower-muted">—</span>
 					</template>
 				</DataTable>
 			</template>
@@ -447,6 +552,19 @@
 				<template #cell-addresses="{ row }">{{ fmt.addresses(row) || '—' }}</template>
 			</DataTable>
 			<template v-if="hostNetwork.network_depth">
+				<h4 class="nc-tower-subhead">NIC link</h4>
+				<div class="nc-tower-chips">
+					<span v-for="nic in (hostNetwork.nic_detail || [])"
+						:key="'nic-' + nic.ifname"
+						class="nc-tower-chip"
+						:class="nic.link === 'yes' || nic.link === true || /yes|up/i.test(String(nic.link || '')) ? 'nc-tower-chip--ok' : 'nc-tower-chip--warn'">
+						{{ nic.ifname }}
+						{{ nic.speed || nic.Speed || '—' }}
+						{{ nic.duplex || '' }}
+						{{ nic.driver ? `· ${nic.driver}` : '' }}
+					</span>
+					<span v-if="!(hostNetwork.nic_detail || []).length" class="nc-tower-muted">No NIC detail</span>
+				</div>
 				<h4 class="nc-tower-subhead">Routes</h4>
 				<DataTable :columns="routeColumns"
 					:rows="hostNetwork.routes?.items || []"
@@ -523,16 +641,36 @@
 			:loading="loading.inbox"
 			:error="errors.inbox"
 			@refresh="refresh('inbox')">
-			<template v-if="(inbox.critical_recent || []).length">
+			<div class="nc-tower-chips">
+				<span class="nc-tower-chip">{{ inboxActiveCount }} active warning(s)</span>
+				<span class="nc-tower-chip">{{ inboxStaleCount }} stale</span>
+			</div>
+			<div class="nc-tower-toolbar">
+				<NcButton type="secondary" @click="askArchiveStale">Archive stale (&gt;48h)</NcButton>
+			</div>
+			<template v-if="(inbox.active_critical || []).length || (inbox.critical_recent || []).length">
 				<h4 class="nc-tower-subhead tower-bad">Critical</h4>
-				<DataTable :columns="inboxColumns" :rows="inbox.critical_recent" empty-text="None">
+				<DataTable :columns="inboxColumns"
+					:rows="inbox.critical_recent || []"
+					empty-text="None">
 					<template #cell-mtime="{ row }">{{ fmt.time(row.mtime) }}</template>
 				</DataTable>
 			</template>
-			<h4 class="nc-tower-subhead">Recent</h4>
-			<DataTable :columns="inboxColumns" :rows="(inbox.inbox_recent || []).slice(0, 25)" empty-text="Empty">
-				<template #cell-mtime="{ row }">{{ fmt.time(row.mtime) }}</template>
-			</DataTable>
+			<h4 class="nc-tower-subhead">Recent (by monitor)</h4>
+			<div v-for="group in inboxGroups" :key="group.monitor" class="nc-tower-inbox-group">
+				<header class="nc-tower-inbox-group__head">
+					<span class="nc-tower-chip" :class="group.active ? 'nc-tower-chip--active' : ''">
+						{{ group.active ? 'active' : 'stale' }}
+					</span>
+					<strong>{{ group.monitor }}</strong>
+					<span class="nc-tower-muted">{{ group.count }} file(s)</span>
+					<span class="nc-tower-muted">{{ fmt.time(group.newest?.mtime) }}</span>
+				</header>
+				<p v-if="group.newest?.detail" class="nc-tower-muted nc-tower-inbox-group__detail">
+					{{ group.newest.detail }}
+				</p>
+			</div>
+			<p v-if="!inboxGroups.length" class="nc-tower-muted">Empty</p>
 		</Section>
 
 		<ConfirmDialog v-bind="confirm"
@@ -615,10 +753,12 @@ import Sparkline from '../components/Sparkline.vue'
 import TowerChart from '../components/TowerChart.vue'
 import OutputDialog from '../components/OutputDialog.vue'
 import Section from '../components/Section.vue'
+import SeverityDot from '../components/SeverityDot.vue'
 import StatusBanner from '../components/StatusBanner.vue'
 import UsageBar from '../components/UsageBar.vue'
 
 import { get, post } from '../services/api.js'
+import { partitionItems, loadSnoozes } from '../services/attentionSnooze.js'
 import fmt from '../services/format.js'
 import { assess, worst } from '../services/health.js'
 import { runJob } from '../services/jobs.js'
@@ -629,8 +769,8 @@ const LOCKED_HINT = 'Widen NC_TOWER_CONTAINER_LOG_ALLOW for read-only logs witho
 export default {
 	name: 'Ops',
 	components: {
-		AttentionList, ConfirmDialog, DataTable, FanPanel, JobPanel, NcTowerIcon, OutputDialog, Section, Sparkline,
-		StatusBanner, TowerChart, UsageBar,
+		AttentionList, ConfirmDialog, DataTable, FanPanel, JobPanel, NcTowerIcon, OutputDialog, Section, SeverityDot,
+		Sparkline, StatusBanner, TowerChart, UsageBar,
 		NcActionButton, NcActions, NcButton, NcCheckboxRadioSwitch, NcDialog, NcNoteCard, NcTextField,
 	},
 	data() {
@@ -675,6 +815,8 @@ export default {
 			loading: {},
 			errors: {},
 			containerFilter: '',
+			containerStateFilter: 'all',
+			collapsedProjects: {},
 			pullRef: '',
 			auditFilter: '',
 			ollamaPull: '',
@@ -697,7 +839,7 @@ export default {
 			},
 			containerColumns: [
 				{ key: 'name', label: 'Name' },
-				{ key: 'project', label: 'Project' },
+				{ key: 'health', label: 'Health', sortable: false },
 				{ key: 'status', label: 'Status' },
 				{ key: 'cpu', label: 'CPU', align: 'end', sortBy: 'cpu_pct' },
 				{ key: 'trend', label: 'Trend', sortable: false },
@@ -845,6 +987,7 @@ export default {
 				{ key: 'temp_min', label: 'Temp min', align: 'end' },
 				{ key: 'temp_now', label: 'Temp now', align: 'end' },
 				{ key: 'temp_max', label: 'Temp max', align: 'end' },
+				{ key: 'trend', label: 'Trend', sortable: false },
 				{ key: 'reallocated', label: 'Realloc', align: 'end' },
 				{ key: 'pending', label: 'Pending', align: 'end' },
 				{ key: 'samples', label: 'Samples', align: 'end' },
@@ -885,6 +1028,12 @@ export default {
 				ncShares: this.ncShares,
 			})
 		},
+		attentionPartition() {
+			return partitionItems(this.verdict.items, loadSnoozes())
+		},
+		bannerLevel() {
+			return worst(...this.attentionPartition.visible.map((item) => item.severity))
+		},
 		sev() {
 			const bySection = (name) => worst(...this.verdict.items
 				.filter((item) => item.section === name)
@@ -922,13 +1071,63 @@ export default {
 			return out
 		},
 		filteredContainers() {
-			const rows = this.containers.containers || []
-			const query = this.containerFilter.trim().toLowerCase()
-			if (!query) {
-				return rows
+			let rows = this.containers.containers || []
+			const filter = this.containerStateFilter
+			if (filter === 'running') {
+				rows = rows.filter((row) => row.status === 'running')
+			} else if (filter === 'exited') {
+				rows = rows.filter((row) => row.status === 'exited')
+			} else if (filter === 'unhealthy') {
+				rows = rows.filter((row) => row.health === 'unhealthy'
+					|| /unhealthy/i.test(row.status_raw || ''))
+			} else if (filter === 'restarting') {
+				rows = rows.filter((row) => /restarting/i.test(row.status_raw || row.status || ''))
 			}
-			return rows.filter((row) => `${row.name} ${row.status} ${row.image || ''} ${row.project || ''}`
-				.toLowerCase().includes(query))
+			const query = this.containerFilter.trim().toLowerCase()
+			if (query) {
+				rows = rows.filter((row) => `${row.name} ${row.status} ${row.image || ''} ${row.project || ''}`
+					.toLowerCase().includes(query))
+			}
+			return rows
+		},
+		containerStateChips() {
+			const rows = this.containers.containers || []
+			const count = (pred) => rows.filter(pred).length
+			return [
+				{ id: 'all', label: 'All', count: rows.length },
+				{ id: 'running', label: 'Running', count: count((row) => row.status === 'running') },
+				{ id: 'exited', label: 'Exited', count: count((row) => row.status === 'exited') },
+				{
+					id: 'unhealthy',
+					label: 'Unhealthy',
+					count: count((row) => row.health === 'unhealthy'
+						|| /unhealthy/i.test(row.status_raw || '')),
+				},
+				{
+					id: 'restarting',
+					label: 'Restarting',
+					count: count((row) => /restarting/i.test(row.status_raw || row.status || '')),
+				},
+			]
+		},
+		containerGroups() {
+			const map = new Map()
+			for (const row of this.filteredContainers) {
+				const project = row.project || '(no project)'
+				if (!map.has(project)) {
+					map.set(project, [])
+				}
+				map.get(project).push(row)
+			}
+			return [...map.entries()].map(([project, rows]) => ({
+				project,
+				rows,
+				running: rows.filter((row) => row.status === 'running').length,
+				total: rows.length,
+				unhealthy: rows.filter((row) => row.health === 'unhealthy'
+					|| /unhealthy/i.test(row.status_raw || '')).length,
+				stack: this.matchStackForProject(project),
+			})).sort((a, b) => a.project.localeCompare(b.project))
 		},
 		lockedCount() {
 			return (this.containers.containers || []).filter((row) => !row.mutable && !row.loggable).length
@@ -973,8 +1172,57 @@ export default {
 			return hidden ? `${shown} shown · ${hidden} probes hidden` : `${shown} in last hour`
 		},
 		inboxSummary() {
-			const crit = (this.inbox.critical_recent || []).length
-			return crit ? `${crit} critical` : `${(this.inbox.inbox_recent || []).length} recent`
+			const crit = (this.inbox.active_critical || []).length
+				|| (this.inbox.critical_recent || []).length
+			return crit ? `${crit} critical` : `${this.inboxActiveCount} active · ${this.inboxStaleCount} stale`
+		},
+		inboxActiveCount() {
+			return (this.inbox.active_warnings || []).length
+		},
+		inboxStaleCount() {
+			const activeMonitors = new Set((this.inbox.active_warnings || []).map((row) => row.monitor))
+			const cutoff = Date.now() / 1000 - 24 * 3600
+			return (this.inbox.inbox_recent || []).filter((row) => {
+				const status = String(row.status || '').toLowerCase()
+				if (!['warn', 'warning'].includes(status)) {
+					return false
+				}
+				return (row.mtime || 0) < cutoff || !activeMonitors.has(row.monitor)
+			}).length
+		},
+		inboxGroups() {
+			const groups = {}
+			for (const row of (this.inbox.inbox_recent || [])) {
+				const key = row.monitor || row.name || 'unknown'
+				if (!groups[key]) {
+					groups[key] = { monitor: key, rows: [], newest: null }
+				}
+				groups[key].rows.push(row)
+				if (!groups[key].newest || (row.mtime || 0) > (groups[key].newest.mtime || 0)) {
+					groups[key].newest = row
+				}
+			}
+			return Object.values(groups).map((group) => ({
+				...group,
+				count: group.rows.length,
+				active: this.isInboxMonitorActive(group.monitor),
+			})).sort((a, b) => (b.newest?.mtime || 0) - (a.newest?.mtime || 0))
+		},
+		smartTempTrends() {
+			const bySerial = {}
+			for (const sample of (this.smartHistory.samples || [])) {
+				for (const disk of (sample.disks || [])) {
+					const key = disk.serial || disk.device || disk.name
+					if (!key || disk.temp_c == null) {
+						continue
+					}
+					if (!bySerial[key]) {
+						bySerial[key] = []
+					}
+					bySerial[key].push(disk.temp_c)
+				}
+			}
+			return bySerial
 		},
 		ifaceLine() {
 			return (this.host.ifaces || []).slice(0, 6)
@@ -1088,6 +1336,15 @@ export default {
 		},
 	},
 	created() {
+		try {
+			const savedFilter = localStorage.getItem('nc-tower-container-state-filter')
+			if (savedFilter) {
+				this.containerStateFilter = savedFilter
+			}
+			this.collapsedProjects = JSON.parse(localStorage.getItem('nc-tower-container-collapse') || '{}')
+		} catch (error) {
+			/* private mode / storage disabled */
+		}
 		// Not in data(): observing timer handles and a Map buys nothing.
 		this.poller = new Poller()
 		const p = this.poller
@@ -1427,7 +1684,7 @@ export default {
 			this.$set(this.statsOpen, name, 'Loading…')
 			try {
 				const data = await get(`/tower/containers/${encodeURIComponent(name)}/stats`)
-				this.$set(this.statsOpen, name, JSON.stringify(data.stats || data, null, 2))
+				this.$set(this.statsOpen, name, this.parseStatsBlob(data.stats || data))
 			} catch (error) {
 				this.$set(this.statsOpen, name, error.message)
 			}
@@ -1548,10 +1805,37 @@ export default {
 			this.output = { open: true, title: `Inspect — ${name}`, text: 'Loading…', kind: 'inspect', follow: false, name }
 			try {
 				const data = await get(`/tower/containers/${encodeURIComponent(name)}/inspect`)
-				this.output.text = JSON.stringify(data.inspect || data, null, 2)
+				const inspect = data.inspect || data
+				const summary = this.formatInspectSummary(inspect)
+				const raw = JSON.stringify(inspect, null, 2)
+				this.output.text = summary ? `${summary}\n\n--- raw JSON ---\n${raw}` : raw
 			} catch (error) {
 				this.output.text = error.message
 			}
+		},
+		formatInspectSummary(inspect) {
+			if (!inspect || typeof inspect !== 'object') {
+				return ''
+			}
+			const cfg = inspect.Config || {}
+			const host = inspect.HostConfig || {}
+			const net = inspect.NetworkSettings || {}
+			const state = inspect.State || {}
+			const mounts = (inspect.Mounts || []).map((m) => `${m.Source || '?'} → ${m.Destination || '?'}`).slice(0, 8)
+			const networks = Object.keys(net.Networks || {})
+			const restart = host.RestartPolicy?.Name || '—'
+			const envCount = Array.isArray(cfg.Env) ? cfg.Env.length : 0
+			const lines = [
+				`Image: ${cfg.Image || inspect.Image || '—'}`,
+				`Status: ${state.Status || '—'}  Health: ${state.Health?.Status || 'n/a'}`,
+				`Restart policy: ${restart}`,
+				`Networks: ${networks.join(', ') || '—'}`,
+				`Mounts (${(inspect.Mounts || []).length}): ${mounts.join('; ') || '—'}`,
+				`Env vars: ${envCount}`,
+				`Entrypoint: ${JSON.stringify(cfg.Entrypoint || [])}`,
+				`Cmd: ${JSON.stringify(cfg.Cmd || [])}`,
+			]
+			return lines.join('\n')
 		},
 		showPreview(row) {
 			this.output = { open: true, title: row.file, text: row.preview || '', kind: 'preview', follow: false, name: '' }
@@ -1599,6 +1883,115 @@ export default {
 			} finally {
 				this.exec.busy = false
 			}
+		},
+
+		setContainerStateFilter(id) {
+			this.containerStateFilter = id
+			try {
+				localStorage.setItem('nc-tower-container-state-filter', id)
+			} catch (error) {
+				/* ignore quota */
+			}
+		},
+		toggleProjectCollapse(project) {
+			this.$set(this.collapsedProjects, project, !this.collapsedProjects[project])
+			try {
+				localStorage.setItem('nc-tower-container-collapse', JSON.stringify(this.collapsedProjects))
+			} catch (error) {
+				/* ignore quota */
+			}
+		},
+		isProjectCollapsed(project) {
+			return !!this.collapsedProjects[project]
+		},
+		matchStackForProject(project) {
+			if (!project || project === '(no project)') {
+				return null
+			}
+			const needle = project.toLowerCase()
+			return this.stackRows.find((row) => {
+				const file = String(row.file || '').toLowerCase()
+				const dir = String(row.dir || '').toLowerCase()
+				return file.includes(needle) || dir.includes(needle)
+			}) || null
+		},
+		containerHealthLevel(row) {
+			if (row.health === 'healthy') {
+				return 'ok'
+			}
+			if (row.health === 'unhealthy') {
+				return 'crit'
+			}
+			if (row.health === 'starting') {
+				return 'warn'
+			}
+			return 'idle'
+		},
+		parsePortLinks(ports) {
+			if (ports == null || ports === '') {
+				return []
+			}
+			const host = window.location.hostname
+			const parts = typeof ports === 'string'
+				? ports.split(',').map((part) => part.trim()).filter(Boolean)
+				: []
+			return parts.map((part) => {
+				const match = part.match(/^(\[[^\]]+\]|[^:]+):(\d+)->\d+\/(tcp|udp)$/i)
+				if (!match) {
+					return { text: part, href: null }
+				}
+				if (match[3].toLowerCase() !== 'tcp') {
+					return { text: part, href: null }
+				}
+				const bindHost = match[1] === '0.0.0.0' || match[1] === '::' ? host : match[1]
+				return { text: `${bindHost}:${match[2]}`, href: `http://${bindHost}:${match[2]}` }
+			})
+		},
+		parseStatsBlob(raw) {
+			let stats = raw
+			if (typeof stats === 'string') {
+				try {
+					stats = JSON.parse(stats)
+				} catch (error) {
+					return { raw: stats, error: true }
+				}
+			}
+			if (!stats || typeof stats !== 'object') {
+				return { raw: stats, error: true }
+			}
+			const cpu = parseFloat(String(stats.CPUPerc || stats.cpu_percent || '').replace('%', ''))
+			const mem = parseFloat(String(stats.MemPerc || stats.mem_percent || '').replace('%', ''))
+			return {
+				raw: stats,
+				cpu: Number.isFinite(cpu) ? cpu : null,
+				mem: Number.isFinite(mem) ? mem : null,
+				memUsage: stats.MemUsage || stats.mem_usage || '',
+				net: stats.NetIO || stats.net_io || '',
+				block: stats.BlockIO || stats.block_io || '',
+			}
+		},
+		isInboxMonitorActive(monitor) {
+			const inWarnings = (this.inbox.active_warnings || []).some((row) => row.monitor === monitor)
+			const inCritical = (this.inbox.active_critical || []).some((row) => row.monitor === monitor)
+			return inWarnings || inCritical
+		},
+		askArchiveStale() {
+			this.confirm = {
+				open: true,
+				title: 'Archive stale inbox files',
+				message: 'Move resolved inbox files older than 48 hours into archive/?',
+				confirmLabel: 'Archive',
+				phrase: '',
+				danger: false,
+			}
+			this.pendingAction = () => this.runArchiveStale()
+		},
+		runArchiveStale() {
+			return this.mutate(
+				post('/tower/ops-inbox/archive-stale', { max_age_hours: 48 }),
+				'Stale inbox files archived',
+				() => this.poller.refresh('inbox'),
+			)
 		},
 	},
 }
@@ -1681,4 +2074,80 @@ export default {
 .nc-tower-good { color: var(--color-success); }
 .nc-tower-bad { color: var(--color-error); }
 .nc-tower-warn-text { color: var(--color-warning); }
+
+.nc-tower-chip--clickable {
+	cursor: pointer;
+	border: none;
+	font: inherit;
+}
+
+.nc-tower-chip--active {
+	background: var(--color-primary-element);
+	color: var(--color-primary-text);
+}
+
+.nc-tower-container-group {
+	margin: 12px 0;
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius-large, 8px);
+	overflow: hidden;
+
+	&__head {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 10px;
+		background: var(--color-background-dark);
+		cursor: pointer;
+		flex-wrap: wrap;
+	}
+
+	&__stack {
+		margin-left: auto;
+	}
+
+	&__body {
+		padding: 0 4px 4px;
+	}
+}
+
+.nc-tower-stats-bars {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 8px 0;
+}
+
+.nc-tower-stats-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.nc-tower-stats-raw {
+	margin-top: 6px;
+}
+
+.nc-tower-inbox-group {
+	margin: 10px 0;
+	padding: 8px 10px;
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius, 4px);
+
+	&__head {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+
+	&__detail {
+		margin: 6px 0 0;
+	}
+}
+
+.nc-tower-ports a {
+	color: var(--color-primary-element);
+	text-decoration: underline;
+}
 </style>

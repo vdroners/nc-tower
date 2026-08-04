@@ -16,6 +16,8 @@ from chassis_fan import PROFILE_CURVES, validate_curve  # noqa: E402
 from parity import (  # noqa: E402
     apply_recreate_overrides,
     backup_path_contained,
+    dedupe_active_alerts,
+    parse_container_status,
     parse_wg_dump,
     redact_wg_key,
     validate_container_name,
@@ -92,6 +94,44 @@ class WgTests(unittest.TestCase):
         text = "wg0\tpubkeyiface\t\toff\t\t0\t0\nABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcd\t(none)\t1.2.3.4:51820\t10.0.0.2/32\t1710000000\t100\t200\t\n"
         peers = parse_wg_dump(text)
         self.assertTrue(any(p.get("endpoint") for p in peers))
+
+
+class ContainerStatusParseTests(unittest.TestCase):
+    def test_healthy(self):
+        health, uptime = parse_container_status("Up 2 hours (healthy)")
+        self.assertEqual(health, "healthy")
+        self.assertEqual(uptime, "Up 2 hours")
+
+    def test_unhealthy(self):
+        health, uptime = parse_container_status("Up 5 minutes (unhealthy)")
+        self.assertEqual(health, "unhealthy")
+        self.assertTrue(uptime.startswith("Up"))
+
+    def test_exited(self):
+        health, uptime = parse_container_status("Exited (0) 3 days ago")
+        self.assertIsNone(health)
+        self.assertIn("Exited", uptime or "")
+
+    def test_empty(self):
+        self.assertEqual(parse_container_status(""), (None, None))
+
+
+class InboxActiveTests(unittest.TestCase):
+    def test_dedupe_and_window(self):
+        now = 1_700_000_000.0
+        rows = [
+            {"monitor": "base-station-freshness", "status": "warn", "mtime": now - 3600, "name": "a.json"},
+            {"monitor": "base-station-freshness", "status": "warn", "mtime": now - 7200, "name": "b.json"},
+            {"monitor": "container-watchdog", "status": "warn", "mtime": now - 30 * 3600, "name": "old.json"},
+            {"monitor": "x", "status": "ok", "mtime": now - 100, "name": "ok.json"},
+        ]
+        active = dedupe_active_alerts(
+            rows, statuses={"warn", "warning"}, max_age_s=24 * 3600, now=now
+        )
+        self.assertEqual(len(active), 1)
+        self.assertEqual(active[0]["monitor"], "base-station-freshness")
+        self.assertEqual(active[0]["count"], 2)
+        self.assertEqual(active[0]["name"], "a.json")
 
 
 if __name__ == "__main__":

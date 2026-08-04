@@ -246,6 +246,7 @@ class SystemController extends Controller {
                 'nc_currentVersionimplode' => $ncupdate['currentVersionimplode'],
                 'nc_logfile' => $logfile['file'],
                 'nc_logfile_size' => $logfile['filesize'],
+                'nc_loglevel' => (int) $this->config->getSystemValue('loglevel', 2),
                 'nc_updatechannel' => $updatechannel,
                 'network' => $this->myService->getNetworkInterfaces(),
             ]);

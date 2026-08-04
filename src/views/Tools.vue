@@ -66,8 +66,11 @@ import Poller from '../services/poll.js'
  * Probe rule: any HTTP answer counts as reachable. Guacamole and MediaMTX both
  * return 404 at `/` while perfectly healthy, so only a connection failure counts
  * as down — otherwise this page would cry wolf on two working services.
+ *
+ * 1.16.0: Absorbed + Break-glass merge into one Legacy consoles group —
+ * Webmin/Portainer already say Tower has parity.
  */
-const ABSORBED = [
+const LEGACY = [
 	['System Health', 'Ops › Host and storage', 'webmin'],
 	['Docker', 'Ops › Containers', 'webmin'],
 	['Docker Stacks', 'Ops › Stacks', 'webmin'],
@@ -77,11 +80,8 @@ const ABSORBED = [
 	['Fan Control (chassis PWM)', 'Ops › Fans', 'webmin'],
 	['Network/VPN', 'Ops › Network', 'webmin'],
 	['Ollama Manager', 'Ops › Ollama', ''],
-]
-
-const BREAK_GLASS = [
-	{ title: 'Webmin', key: 'webmin', note: 'Optional — Tower has parity; kept as second opinion' },
-	{ title: 'Portainer', key: 'portainer', note: 'Optional — Tower has parity; kept as second opinion' },
+	['Webmin', '', 'webmin', 'Optional — Tower has parity; kept as second opinion'],
+	['Portainer', '', 'portainer', 'Optional — Tower has parity; kept as second opinion'],
 ]
 
 const APPS = [
@@ -106,20 +106,19 @@ export default {
 			const urlOf = (title) => (flat.find((tool) => tool.title === title) || {}).url || ''
 			const probe = (key) => this.probes[key] || null
 
-			const filterConfigured = (rows) => rows.filter((row) => row.url || row.note)
+			const filterConfigured = (rows) => rows.filter((row) => row.url || row.note || row.supersededBy)
 
 			return [
 				{
-					title: 'Absorbed into NC Tower',
-					blurb: 'Tower does these now. The links remain only as a second opinion.',
-					rows: ABSORBED.map(([title, where, key]) => ({
-						title, url: urlOf(title), supersededBy: where, probe: probe(key),
-					})).filter((row) => row.url || row.supersededBy),
-				},
-				{
-					title: 'Break-glass — still needed',
-					blurb: 'What Tower deliberately does not do yet. Each says what it is still for.',
-					rows: filterConfigured(BREAK_GLASS.map((row) => ({ ...row, url: urlOf(row.title), probe: probe(row.key) }))),
+					title: 'Legacy consoles — superseded by Tower',
+					blurb: 'Tower does these now. Links remain only as a second opinion.',
+					rows: filterConfigured(LEGACY.map(([title, where, key, note]) => ({
+						title,
+						url: urlOf(title),
+						supersededBy: where || null,
+						note: note || null,
+						probe: probe(key),
+					}))),
 				},
 				{
 					title: 'External applications',

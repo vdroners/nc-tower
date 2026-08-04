@@ -101,7 +101,8 @@ export function assess(data) {
 			`${disk.path} is running out of space`, 'host')
 	}
 
-	const packageTemp = overThreshold(data.host?.package_temp_c, 55, 65)
+	// 1.16.0: 55/65 was crying wolf at idle package temps (~56°C).
+	const packageTemp = overThreshold(data.host?.package_temp_c, 70, 85)
 	add(packageTemp, `CPU package ${data.host?.package_temp_c}°C`, 'CPU running hot', 'host')
 
 	for (const disk of data.smart?.disks || []) {
@@ -110,14 +111,17 @@ export function assess(data) {
 		} else if (disk.health !== 'PASS') {
 			add(WARN, `${disk.device} SMART ${disk.health}`, disk.model || 'health unknown', 'smart')
 		}
-		// Only meaningful since 1.8.2 — the old parser reported the next
-		// attribute row's ID, so /dev/sda read as 10 h against 60404 h.
+		// Age alone is informational when SMART is PASS and sector counters
+		// are clean — otherwise a healthy 6-year drive nags forever.
 		const age = overThreshold(disk.power_on_hours, HOURS_5Y, HOURS_7Y)
-		const ageDetail = disk.health === 'PASS'
-			? `${disk.power_on_hours} hours — past age threshold (SMART still PASS)`
-			: `${disk.power_on_hours} hours — past nominal service life`
-		add(age, `${disk.device} ${Math.round((disk.power_on_hours || 0) / 8760 * 10) / 10} years powered on`,
-			ageDetail, 'smart')
+		const sectorTrouble = Number(disk.reallocated || 0) > 0
+			|| Number(disk.pending || 0) > 0
+			|| Number(disk.reallocated_sectors || 0) > 0
+			|| Number(disk.pending_sectors || 0) > 0
+		if (age !== OK && (disk.health !== 'PASS' || sectorTrouble)) {
+			add(age, `${disk.device} ${Math.round((disk.power_on_hours || 0) / 8760 * 10) / 10} years powered on`,
+				`${disk.power_on_hours} hours — past nominal service life`, 'smart')
+		}
 		add(overThreshold(disk.temp_c, 55, 65), `${disk.device} ${disk.temp_c}°C`, 'drive running hot', 'smart')
 	}
 
@@ -143,17 +147,35 @@ export function assess(data) {
 		}
 	}
 
+	// Prefer sidecar active_* (24 h, deduped). Fall back to raw recent for older sidecars.
 	const recent = data.inbox?.inbox_recent || []
-	const critical = data.inbox?.critical_recent
+	const activeWarnings = data.inbox?.active_warnings
+	const activeCritical = data.inbox?.active_critical
+	const critical = activeCritical
+		|| data.inbox?.critical_recent
 		|| recent.filter((row) => ['crit', 'critical'].includes(String(row.status || '').toLowerCase()))
-	const warns = recent.filter((row) => String(row.status || '').toLowerCase() === 'warn')
+	const warns = activeWarnings
+		|| recent.filter((row) => String(row.status || '').toLowerCase() === 'warn')
+	const formatMonitors = (rows) => {
+		const counts = {}
+		for (const row of rows) {
+			const key = row.monitor || row.name || '?'
+			counts[key] = (counts[key] || 0) + (Number(row.count) || 1)
+		}
+		return Object.entries(counts)
+			.map(([name, count]) => (count > 1 ? `${name} ×${count}` : name))
+			.slice(0, 8)
+			.join(', ')
+	}
 	if (critical.length) {
-		add(CRIT, `${critical.length} critical ops alert${critical.length > 1 ? 's' : ''}`,
-			critical.map((row) => row.monitor || row.name).join(', '), 'inbox')
+		const n = critical.reduce((sum, row) => sum + (Number(row.count) || 1), 0)
+		add(CRIT, `${n} critical ops alert${n > 1 ? 's' : ''}`,
+			formatMonitors(critical), 'inbox')
 	}
 	if (warns.length) {
-		add(WARN, `${warns.length} ops warning${warns.length > 1 ? 's' : ''}`,
-			warns.map((row) => row.monitor || row.name).slice(0, 8).join(', '), 'inbox')
+		const n = warns.reduce((sum, row) => sum + (Number(row.count) || 1), 0)
+		add(WARN, `${n} ops warning${n > 1 ? 's' : ''}`,
+			formatMonitors(warns), 'inbox')
 	}
 	const backup = data.inbox?.backup
 	if (backup && backup.stale) {
@@ -195,6 +217,13 @@ export function assess(data) {
 	add(overThreshold(logBytes, LOG_WARN_BYTES, LOG_CRIT_BYTES),
 		`nextcloud.log is ${system.nc_logfile_size}`,
 		'rotate or truncate the Nextcloud log', 'system')
+
+	// Debug logging left on after troubleshooting grows the log unbounded.
+	const loglevel = system.nc_loglevel ?? system.loglevel
+	if (loglevel != null && Number(loglevel) < 2) {
+		add(WARN, 'Debug logging enabled',
+			`loglevel=${loglevel} — nextcloud.log will grow unbounded`, 'system')
+	}
 
 	const appUpdates = data.updates?.available === false ? 0 : (data.updates?.appscount || 0)
 	if (appUpdates) {

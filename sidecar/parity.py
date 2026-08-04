@@ -24,6 +24,58 @@ def validate_container_name(name: str) -> bool:
     return bool(NAME_RE.fullmatch(name or ""))
 
 
+def parse_container_status(status_raw: str) -> tuple[str | None, str | None]:
+    """Parse docker ps Status into (health, uptime).
+
+    Examples:
+      'Up 2 hours (healthy)' -> ('healthy', 'Up 2 hours')
+      'Up 5 minutes (unhealthy)' -> ('unhealthy', 'Up 5 minutes')
+      'Exited (0) 3 days ago' -> (None, 'Exited (0) 3 days ago')
+      'Up About an hour' -> (None, 'Up About an hour')
+    """
+    text = (status_raw or "").strip()
+    if not text:
+        return None, None
+    health = None
+    match = re.search(r"\((healthy|unhealthy|starting|health: starting)\)", text, re.I)
+    if match:
+        raw = match.group(1).lower()
+        health = "starting" if "starting" in raw else raw
+        text = (text[: match.start()] + text[match.end() :]).strip()
+    return health, text or None
+
+
+def dedupe_active_alerts(
+    rows: list[dict[str, Any]],
+    *,
+    statuses: set[str],
+    max_age_s: float,
+    now: float | None = None,
+) -> list[dict[str, Any]]:
+    """Keep newest alert per monitor within the age window; attach count."""
+    now_ts = time.time() if now is None else now
+    cutoff = now_ts - max_age_s
+    by_monitor: dict[str, dict[str, Any]] = {}
+    counts: dict[str, int] = {}
+    for row in rows:
+        status = str(row.get("status") or "").lower()
+        if status not in statuses:
+            continue
+        mtime = float(row.get("mtime") or 0)
+        if mtime < cutoff:
+            continue
+        key = str(row.get("monitor") or row.get("name") or "unknown")
+        counts[key] = counts.get(key, 0) + 1
+        prev = by_monitor.get(key)
+        if prev is None or mtime >= float(prev.get("mtime") or 0):
+            by_monitor[key] = {**row, "monitor": key}
+    out = []
+    for key, row in by_monitor.items():
+        out.append({**row, "count": counts.get(key, 1)})
+    out.sort(key=lambda r: float(r.get("mtime") or 0), reverse=True)
+    return out
+
+
 def redact_wg_key(key: str) -> str:
     key = (key or "").strip()
     if len(key) <= 8:
@@ -361,7 +413,7 @@ def parse_smart_attributes(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
-SIDECAR_VERSION = "1.15.0"
+SIDECAR_VERSION = "1.16.0"
 CAPABILITIES = [
     "chassis-fan-write",
     "chassis-fan-history",
@@ -381,7 +433,10 @@ CAPABILITIES = [
     "hardware",
     "storage-topology",
     "temperatures",
+    "temperatures-history",
     "posture",
     "kernel-log",
     "smart-history",
+    "ops-inbox-active",
+    "ops-inbox-archive",
 ]

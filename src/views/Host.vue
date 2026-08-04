@@ -11,6 +11,7 @@
 			:hardware="hardware"
 			:storage="storageTopo"
 			:temperatures="temperatures"
+			:temp-history="tempHistory"
 			:posture="posture"
 			:kernel-log="kernelLog"
 			:loading="loading"
@@ -240,6 +241,7 @@ export default {
 			hardware: {},
 			storageTopo: {},
 			temperatures: {},
+			tempHistory: {},
 			posture: {},
 			kernelLog: {},
 			mounts: {},
@@ -373,6 +375,7 @@ export default {
 		p.add('hardware', () => this.fetch('hardware', '/tower/hardware'), 300000)
 		p.add('storage', () => this.fetch('storageTopo', '/tower/storage', null, 'storage'), 120000)
 		p.add('temperatures', () => this.fetch('temperatures', '/tower/temperatures'), 60000)
+		p.add('tempHistory', () => this.fetch('tempHistory', '/tower/temperatures/history', { hours: 24 }), 60000)
 		p.add('posture', () => this.fetch('posture', '/tower/posture'), 120000)
 		p.add('kernelLog', () => this.fetch('kernelLog', '/tower/kernel-log', { minutes: 60 }), 120000)
 		p.add('proc', () => this.fetch('proc', '/tower/proc'), 15000)

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.16.0] - 2026-08-04
+
+### Added
+- Host visualizations: TempStrip heat bars, 24 h package-temp history, DIMM slot map, CPU topology chips, storage capacity map, PCIe class badges, NIC link chips
+- Ops containers: Portainer-style project groups, state filter chips, inline quick actions, UsageBars, clickable ports, parsed stats + inspect summary
+- Sidecar per-container `health`/`uptime`, `/host/temperatures/history`, ops-inbox `active_warnings`/`active_critical`, `POST /ops/inbox/archive-stale`
+- AttentionList 7-day snooze; System payload `nc_loglevel` + debug-logging health rule
+- Preflight G33/G34/G35; plan [`docs/plans/host-viz-containers-attention.md`](docs/plans/host-viz-containers-attention.md)
+
+### Changed
+- CPU package temp thresholds 70/85; SMART age no longer nags when PASS + clean sectors
+- Ops inbox health uses 24 h deduped active warnings; Tools merges Absorbed + Break-glass into **Legacy consoles — superseded by Tower**
+- Docs [`docs/OPS_PANELS.md`](docs/OPS_PANELS.md) and [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md)
+
+### Fixed (ops)
+- Nextcloud `loglevel` reset from 0→2 and log truncated; upgraded `linux-libc-dev` / `linux-tools-common`
+
 ## [1.15.0] - 2026-08-04
 
 ### Added

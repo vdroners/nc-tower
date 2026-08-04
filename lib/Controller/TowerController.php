@@ -197,6 +197,13 @@ class TowerController extends Controller {
 	}
 
 	#[NoCSRFRequired]
+	public function hostTemperaturesHistory(): DataResponse {
+		$hours = (int) $this->request->getParam('hours', '24');
+		$hours = max(1, min($hours, 168));
+		return $this->getJson('/host/temperatures/history?hours=' . $hours, 30);
+	}
+
+	#[NoCSRFRequired]
 	public function hostPosture(): DataResponse {
 		return $this->getJson('/host/posture', 45);
 	}
@@ -310,6 +317,15 @@ class TowerController extends Controller {
 	#[NoCSRFRequired]
 	public function opsInbox(): DataResponse {
 		return $this->getJson('/ops/inbox-summary');
+	}
+
+	/** CSRF required — mutator */
+	public function opsInboxArchiveStale(): DataResponse {
+		$body = $this->jsonBody();
+		$hours = isset($body['max_age_hours']) ? (float) $body['max_age_hours'] : 48.0;
+		return $this->requestJson('POST', '/ops/inbox/archive-stale', [
+			'max_age_hours' => $hours,
+		], 60);
 	}
 
 	#[NoCSRFRequired]
