@@ -4,7 +4,8 @@
  *
  * NC Tower — Nextcloud admin orchestrator (vdroners / 19labs).
  * See CREDITS.md for heritage notes.
- *
+ */
+
 declare(strict_types=1);
 
 namespace OCA\NcTower\Controller;

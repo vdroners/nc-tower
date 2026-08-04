@@ -225,3 +225,46 @@ describe('assess — overall', () => {
 		expect(result.level).toBe(CRIT)
 	})
 })
+
+describe('assess — 1.15 inventory / NC admin', () => {
+	it('flags RAID degraded', () => {
+		expect(find(assess({ storage: { raid: { degraded: true, arrays: [{ name: 'md0' }] } } }), 'RAID')).toBeTruthy()
+	})
+
+	it('flags NTP unsynced', () => {
+		expect(find(assess({ posture: { ntp: { synchronized: false, timezone: 'UTC' } } }), 'NTP')).toBeTruthy()
+	})
+
+	it('flags TLS cert expiring', () => {
+		expect(find(assess({
+			posture: { certs: [{ name: 'cloud', host: 'x', days_left: 10 }] },
+		}), 'TLS cert')).toBeTruthy()
+	})
+
+	it('flags MCE / OOM kernel tags', () => {
+		expect(find(assess({ kernelLog: { tags_seen: ['mce'] } }), 'MCE')).toBeTruthy()
+		expect(find(assess({ kernelLog: { tags_seen: ['oom'] } }), 'OOM')).toBeTruthy()
+	})
+
+	it('flags hardware taint', () => {
+		expect(find(assess({
+			hardware: { os: { taint: { hardware_tainted: true, flags: ['mce'] } } },
+		}), 'tainted')).toBeTruthy()
+	})
+
+	it('flags NC cron stale and setup errors', () => {
+		expect(find(assess({ ncJobs: { stale: true, lastcron_age_s: 1200, cron_mode: 'cron' } }), 'cron stale')).toBeTruthy()
+		expect(find(assess({ ncSetup: { error_count: 2 } }), 'setup-check')).toBeTruthy()
+	})
+
+	it('flags bruteforce spike and passwordless shares', () => {
+		expect(find(assess({ ncBruteforce: { total_24h: 80 } }), 'Bruteforce')).toBeTruthy()
+		expect(find(assess({ ncShares: { passwordless_count: 3 } }), 'passwordless')).toBeTruthy()
+	})
+
+	it('flags SMART trend high temp', () => {
+		expect(find(assess({
+			smartHistory: { summary: [{ device: '/dev/nvme0', serial: 'X', temp_max: 60, temp_now: 55 }] },
+		}), 'SMART temp')).toBeTruthy()
+	})
+})

@@ -1,7 +1,7 @@
 FROM python:3.12-slim-bookworm
 
 WORKDIR /app
-COPY app.py chassis_fan.py parity.py /app/
+COPY app.py chassis_fan.py parity.py inventory.py /app/
 
 ENV NC_TOWER_BIND=0.0.0.0 \
     NC_TOWER_PORT=18765 \

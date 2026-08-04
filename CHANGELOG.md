@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.15.0] - 2026-08-04
+
+### Added
+- Host inventory: hardware (DMI/DIMM/PCIe/USB + Markdown/JSON export), storage topology, temperatures, posture, kernel log
+- SMART 10-min trend history and Ops network depth (routes / DNS / listeners / ethtool)
+- System tab Nextcloud admin depth: log viewer, setup checks, jobs health, bruteforce, share audit, sessions, data-dir bloat
+- Health rules for RAID degraded, cert expiry, NTP, MCE/OOM, cron stale, setup errors, bruteforce spike, passwordless shares
+- Sidecar capabilities `hardware`, `storage-topology`, `temperatures`, `network-depth`, `posture`, `kernel-log`, `smart-history`
+- Plan [`docs/plans/host-inventory-observability.md`](docs/plans/host-inventory-observability.md); preflight G31/G32
+
+### Changed
+- Docs [`docs/OPS_PANELS.md`](docs/OPS_PANELS.md) and [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) for Host + System panels
+
+## [1.14.1] - 2026-08-04
+
+### Fixed
+- Restore Nextcloud after 1.14.0 provenance scrub left unterminated `/**` file headers (`ParseError` / Internal Server Error)
+- Preflight G16 expects sole Sarge authorship in `info.xml`; G30 runs `php -l` on all app PHP
+
+### Removed
+- Ops › Fans history gauges / charts (`FanCharts`) — clipping and not needed; keep profile/PWM/GPU controls. Tools › Break-glass unchanged.
+
 ## [1.14.0] - 2026-08-04
 
 ### Added

@@ -4,13 +4,14 @@ Source of truth for Webmin custom modules + Portainer CE + `/media/4TB/ops` (her
 
 Disposition: **IN** · **EXPAND** · **DEEP_LINK** · **SKIP** · **Never** · **Debt**
 
-Program target (v1.14): standalone **day-ops** — Portainer/Webmin optional second opinion for Never/SKIP rows only.
+Program target (v1.15): standalone **day-ops** — Portainer/Webmin optional second opinion for Never/SKIP rows only.
 
 ## A. Nextcloud admin surfaces
 
 | Item | Status | Notes |
 |------|--------|-------|
 | Admin home / users / apps / system | IN | Subnav Ops/Host/Tools |
+| NC log viewer / setup checks / jobs / bruteforce / shares / sessions / bloat | IN (1.15) | `NcAdminController` OCP/DB RO; maintenance status chip only |
 | Notifications | IN | CSRF on notify* |
 | Dashboard widget | IN | Title “NC Tower” |
 | GET mutators (enableapp, deleteuser, …) | **Debt** | Admin-only; not Ops |
@@ -24,10 +25,11 @@ Program target (v1.14): standalone **day-ops** — Portainer/Webmin optional sec
 | nvidia-gpu | IN | `/host/gpu` (+ processes/power when available) |
 | docker | IN | Allowlisted mutate + logs/inspect/exec |
 | docker-stacks | IN | pinned up/down/restart/pull/rebuild |
-| smart-health | IN | model/temp/hours + NAS + per-attribute detail |
+| smart-health | IN | model/temp/hours + NAS + per-attribute detail + 10-min trend |
 | backup-mgr | IN | inventory + run + delete; restore stays manual |
-| fan-control | IN | GPU + chassis PWM (profiles/curves/pump safety/history) |
-| network-vpn | IN | ZeroTier/WireGuard/interfaces/ddclient/public IP (RO) |
+| fan-control | IN | GPU + chassis PWM (profiles/curves/pump safety; no history gauges) |
+| network-vpn | IN | ZT/WG/ifaces/ddclient/public IP + routes/DNS/listeners/ethtool (RO) |
+| host inventory | IN (1.15) | DMI/DIMM/PCIe/USB, lsblk/RAID, temps, posture, kernel log |
 | ollama-mgr | IN | models list/pull/delete + VRAM |
 
 ### compose_dirs (pinned)
@@ -77,10 +79,11 @@ Optional `NC_TOWER_CONTAINER_LOG_ALLOW` for wider RO logs/inspect.
 | Cap | Status |
 |-----|--------|
 | Mounts / package-updates / proc RO | IN |
+| Hardware / storage / temps / posture / kernel log | IN (1.15) |
 | systemd status + allowlisted restart | IN |
 | cron RO list + root crontab write | IN |
 | package hold/unhold | IN |
-| net glance + VPN status | IN |
+| net glance + VPN status + network depth | IN |
 | useradmin / passwd / firewall editors / filemin / shell | **SKIP** (optional `:10000`) |
 
 ## F. Tools deep-links

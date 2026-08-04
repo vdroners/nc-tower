@@ -16,7 +16,7 @@
 The Nextcloud app itself does not require the sidecar. The sidecar is an **optional privileged host agent** (Docker socket + allowlisted host tools). Administrators configure its URL and token; stock defaults use Docker DNS (`http://nc_tower_sidecar:18765`) and do not embed lab IPs. See [docs/PRIVACY.md](https://github.com/vdroners/nc-tower/blob/main/docs/PRIVACY.md).
 
 Originally derived from Admin Cockpit (AGPL-3.0) — see CREDITS.md.]]></description>
-<version>1.14.0</version>
+<version>1.15.0</version>
 <licence>AGPL-3.0-or-later</licence>
 <author mail="dan@19labs.com" homepage="https://github.com/vdroners/nc-tower">Sarge</author>
 <namespace>NcTower</namespace>

@@ -202,6 +202,71 @@ export function assess(data) {
 			'Nextcloud apps have updates pending', 'apps')
 	}
 
+	// 1.15.0 — host inventory + NC admin depth
+	if (data.storage?.raid?.degraded) {
+		add(CRIT, 'RAID array degraded',
+			(data.storage.raid.arrays || []).map((a) => a.name || a.md).filter(Boolean).join(', ') || 'mdstat reports degraded',
+			'host')
+	}
+	if (data.hardware?.os?.taint?.hardware_tainted) {
+		add(WARN, 'Kernel hardware-tainted',
+			(data.hardware.os.taint.flags || []).join(', ') || 'tainted flag set',
+			'host')
+	}
+	const ntp = data.posture?.ntp
+	if (ntp && !ntp.unavailable && ntp.synchronized === false) {
+		add(WARN, 'NTP not synchronized', ntp.timezone || 'clock may drift', 'host')
+	}
+	for (const cert of data.posture?.certs || []) {
+		const days = cert.days_left
+		if (days == null) {
+			continue
+		}
+		if (days < 0) {
+			add(CRIT, `TLS cert expired: ${cert.name || cert.host}`,
+				`${cert.host || ''} expired`, 'host')
+		} else if (days < 21) {
+			add(WARN, `TLS cert expiring: ${cert.name || cert.host}`,
+				`${days} day(s) remaining`, 'host')
+		}
+	}
+	const tags = data.kernelLog?.tags_seen || []
+	if (tags.includes('mce')) {
+		add(CRIT, 'MCE / hardware error in kernel log (24 h)', 'check Host › Kernel log', 'host')
+	}
+	if (tags.includes('oom')) {
+		add(WARN, 'OOM killer activity in kernel log (24 h)', 'check Host › Kernel log', 'host')
+	}
+	for (const row of data.smartHistory?.summary || []) {
+		if (row.temp_max != null && Number(row.temp_max) >= 55) {
+			add(overThreshold(row.temp_max, 55, 65),
+				`${row.device || row.serial} SMART temp peaked ${row.temp_max}°C`,
+				`trend window max (now ${row.temp_now ?? '—'}°C)`, 'smart')
+		}
+	}
+	if (data.ncJobs?.stale) {
+		const mins = data.ncJobs.lastcron_age_s != null
+			? Math.round(data.ncJobs.lastcron_age_s / 60)
+			: '?'
+		add(WARN, `Nextcloud cron stale (${mins} min)`,
+			`mode ${data.ncJobs.cron_mode || '?'}`, 'system')
+	}
+	if ((data.ncSetup?.error_count || 0) > 0) {
+		add(CRIT, `${data.ncSetup.error_count} Nextcloud setup-check error(s)`,
+			'see System › Setup checks', 'system')
+	} else if ((data.ncSetup?.warn_count || 0) > 0) {
+		add(WARN, `${data.ncSetup.warn_count} Nextcloud setup-check warning(s)`,
+			'see System › Setup checks', 'system')
+	}
+	if ((data.ncBruteforce?.total_24h || 0) > 50) {
+		add(WARN, `Bruteforce spike: ${data.ncBruteforce.total_24h} attempts / 24 h`,
+			'see System › Security', 'system')
+	}
+	if ((data.ncShares?.passwordless_count || 0) > 0) {
+		add(WARN, `${data.ncShares.passwordless_count} passwordless public share(s)`,
+			'see System › Share audit', 'system')
+	}
+
 	items.sort((a, b) => RANK[b.severity] - RANK[a.severity])
 	return { level: worst(...items.map((item) => item.severity)), items }
 }

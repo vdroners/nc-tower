@@ -2,9 +2,20 @@
 	<div class="nc-tower-view">
 		<h2>Host</h2>
 		<p class="nc-tower-view__lead">
-			Read-only host glance plus allowlisted service restarts. Editing users, firewall
-			rules, cron and packages stays in Webmin.
+			Physical host inventory, allowlisted service restarts, and package updates.
+			Nextcloud-container facts live on the System tab.
 		</p>
+
+		<HostInventoryPanels
+			:capabilities="capabilities"
+			:hardware="hardware"
+			:storage="storageTopo"
+			:temperatures="temperatures"
+			:posture="posture"
+			:kernel-log="kernelLog"
+			:loading="loading"
+			:errors="errors"
+			@refresh="refresh" />
 
 		<Section id="host.mounts"
 			title="Mounts"
@@ -196,6 +207,7 @@ import NcCheckboxRadioSwitch from '@nextcloud/vue/dist/Components/NcCheckboxRadi
 import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
 
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import HostInventoryPanels from '../components/HostInventoryPanels.vue'
 import JobPanel from '../components/JobPanel.vue'
 import TowerChart from '../components/TowerChart.vue'
 import NcTowerIcon from '../components/NcTowerIcon.vue'
@@ -217,10 +229,19 @@ const CONTAINER_IFACE = /^(veth|br-|docker|virbr)/
 
 export default {
 	name: 'Host',
-	components: { ConfirmDialog, DataTable, JobPanel, NcTowerIcon, Section, TowerChart, UsageBar, NcButton, NcCheckboxRadioSwitch, NcNoteCard },
+	components: {
+		ConfirmDialog, DataTable, HostInventoryPanels, JobPanel, NcTowerIcon,
+		Section, TowerChart, UsageBar, NcButton, NcCheckboxRadioSwitch, NcNoteCard,
+	},
 	data() {
 		return {
 			fmt,
+			capabilities: [],
+			hardware: {},
+			storageTopo: {},
+			temperatures: {},
+			posture: {},
+			kernelLog: {},
 			mounts: {},
 			packages: {},
 			updates: {},
@@ -348,6 +369,12 @@ export default {
 		// Not in data(): observing timer handles and a Map buys nothing.
 		this.poller = new Poller()
 		const p = this.poller
+		p.add('health', () => this.fetchHealthCaps(), 300000)
+		p.add('hardware', () => this.fetch('hardware', '/tower/hardware'), 300000)
+		p.add('storage', () => this.fetch('storageTopo', '/tower/storage', null, 'storage'), 120000)
+		p.add('temperatures', () => this.fetch('temperatures', '/tower/temperatures'), 60000)
+		p.add('posture', () => this.fetch('posture', '/tower/posture'), 120000)
+		p.add('kernelLog', () => this.fetch('kernelLog', '/tower/kernel-log', { minutes: 60 }), 120000)
 		p.add('proc', () => this.fetch('proc', '/tower/proc'), 15000)
 		p.add('systemd', () => this.fetch('systemd', '/tower/systemd'), 30000)
 		p.add('net', () => this.fetch('net', '/tower/net'), 60000)
@@ -368,15 +395,24 @@ export default {
 		refresh(name) {
 			return this.poller.refresh(name)
 		},
-		async fetch(key, path) {
-			this.$set(this.loading, key, true)
+		async fetch(key, path, params, loadingKey) {
+			const lk = loadingKey || key
+			this.$set(this.loading, lk, true)
 			try {
-				this[key] = await get(path)
-				this.$set(this.errors, key, '')
+				this[key] = await get(path, params)
+				this.$set(this.errors, lk, '')
 			} catch (error) {
-				this.$set(this.errors, key, error.message)
+				this.$set(this.errors, lk, error.message)
 			} finally {
-				this.$set(this.loading, key, false)
+				this.$set(this.loading, lk, false)
+			}
+		},
+		async fetchHealthCaps() {
+			try {
+				const health = await get('/tower/health')
+				this.capabilities = health.capabilities || []
+			} catch (error) {
+				this.capabilities = []
 			}
 		},
 		askUpdate() {

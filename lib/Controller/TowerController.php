@@ -182,6 +182,40 @@ class TowerController extends Controller {
 	}
 
 	#[NoCSRFRequired]
+	public function hostHardware(): DataResponse {
+		return $this->getJson('/host/hardware', 45);
+	}
+
+	#[NoCSRFRequired]
+	public function hostStorage(): DataResponse {
+		return $this->getJson('/host/storage', 60);
+	}
+
+	#[NoCSRFRequired]
+	public function hostTemperatures(): DataResponse {
+		return $this->getJson('/host/temperatures', 45);
+	}
+
+	#[NoCSRFRequired]
+	public function hostPosture(): DataResponse {
+		return $this->getJson('/host/posture', 45);
+	}
+
+	#[NoCSRFRequired]
+	public function hostKernelLog(): DataResponse {
+		$minutes = (int) $this->request->getParam('minutes', '60');
+		$minutes = max(1, min($minutes, 1440));
+		return $this->getJson('/host/kernel-log?minutes=' . $minutes, 40);
+	}
+
+	#[NoCSRFRequired]
+	public function smartHistory(): DataResponse {
+		$hours = (int) $this->request->getParam('hours', '24');
+		$hours = max(1, min($hours, 168));
+		return $this->getJson('/host/smart/history?hours=' . $hours, 30);
+	}
+
+	#[NoCSRFRequired]
 	public function hostOllama(): DataResponse {
 		return $this->getJson('/host/ollama', 30);
 	}

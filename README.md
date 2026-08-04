@@ -1,6 +1,6 @@
 # NC Tower
 
-**Version 1.14.0**
+**Version 1.15.0**
 
 NC Tower is the Nextcloud orchestrator for this GCS host: Nextcloud admin, Docker
 day-ops, host health and the ops inbox in one place, so routine work does not need
@@ -33,9 +33,9 @@ one ever appears.
 | Tab | What it gives you |
 |---|---|
 | **Home** | Health verdict for the host plus a tile per area |
-| **Ops** | Verdict banner and attention list first; then containers, stacks, host and disks, SMART, GPU, fans (profiles + charts), engine, images, volumes, networks, host network/VPN, Ollama, audit, cron, backup, ops inbox |
-| **Host** | Mounts, package updates, top processes, systemd (allowlisted restart), cron, network |
-| **Apps** · **System** · **Users** | Nextcloud administration, rebuilt in Vue |
+| **Ops** | Verdict banner and attention list first; then containers, stacks, host and disks, SMART (+ trend), GPU, fans (profiles), engine, images, volumes, networks, host network depth/VPN, Ollama, audit, cron, backup, ops inbox |
+| **Host** | Hardware inventory (export), storage topology, temperatures, posture, kernel log; mounts, package updates, processes, systemd, cron, network |
+| **Apps** · **System** · **Users** | Nextcloud administration (System: log viewer, setup checks, jobs, security, shares, bloat) |
 | **Tools** | Deep links to Portainer, Webmin, Kuma, Caddy, Guacamole, WebODM, OrcaSlicer, ADSB, MediaMTX (configure URLs in Settings → NC Tower; empty = hidden) |
 
 Ops leads with a verdict — all clear, needs attention, or critical — over the findings that

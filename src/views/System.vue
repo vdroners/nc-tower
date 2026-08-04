@@ -43,7 +43,7 @@
 			</div>
 			<UsageBar :percent="ramPercent" />
 			<h4 class="nc-tower-subhead">Data directory</h4>
-			<p class="nc-tower-mono tower-muted">{{ storagePath }}</p>
+			<p class="nc-tower-mono nc-tower-muted">{{ storagePath }}</p>
 			<UsageBar :percent="storagePercent" />
 			<p class="nc-tower-muted">
 				{{ storageUsedLabel }} used · {{ storageFreeLabel }} free of {{ storageTotalLabel }}
@@ -83,21 +83,118 @@
 		</Section>
 
 		<Section id="system.log"
-			title="Log file"
-			:summary="info.nc_logfile_size || ''"
-			:loading="loading.info"
-			:error="errors.info"
-			@refresh="refresh('info')">
+			title="Nextcloud log"
+			:summary="logSummary"
+			:loading="loading.log"
+			:error="errors.log"
+			default-open
+			@refresh="refreshLog">
+			<div class="nc-tower-chips">
+				<span class="nc-tower-chip" :class="maintenance.maintenance ? 'nc-tower-chip--warn' : ''">
+					maintenance {{ maintenance.maintenance ? 'ON' : 'off' }}
+				</span>
+				<span class="nc-tower-chip">{{ info.nc_logfile_size || '' }}</span>
+			</div>
+			<div class="nc-tower-toolbar">
+				<NcButton v-for="lvl in ['', 'error', 'warn', 'info']"
+					:key="lvl || 'all'"
+					:type="logLevel === lvl ? 'primary' : 'tertiary'"
+					@click="logLevel = lvl; refreshLog()">
+					{{ lvl || 'all' }}
+				</NcButton>
+				<input v-model="logQuery"
+					class="nc-tower-fan-card__num"
+					style="width: 180px"
+					placeholder="reqId / text"
+					@keyup.enter="refreshLog" />
+				<NcButton type="secondary" @click="refreshLog">Filter</NcButton>
+			</div>
+			<DataTable :columns="logColumns" :rows="log.rows || []" empty-text="No lines">
+				<template #cell-message="{ row }">
+					<span class="nc-tower-cmd" :title="row.message">{{ row.message }}</span>
+					<span v-if="row.exception" class="nc-tower-bad"> · {{ row.exception }}</span>
+				</template>
+			</DataTable>
+			<p class="nc-tower-muted nc-tower-mono">{{ log.path || info.nc_logfile }}</p>
+		</Section>
+
+		<Section id="system.setup"
+			title="Setup checks"
+			:summary="setupSummary"
+			:severity="setupSeverity"
+			:loading="loading.setup"
+			:error="errors.setup"
+			@refresh="refresh('setup')">
+			<DataTable :columns="setupColumns" :rows="setup.checks || []" empty-text="No checks">
+				<template #cell-severity="{ row }">
+					<span :class="row.severity === 'error' ? 'nc-tower-bad' : (row.severity === 'warning' ? 'nc-tower-warn' : '')">
+						{{ row.severity }}
+					</span>
+				</template>
+			</DataTable>
+		</Section>
+
+		<Section id="system.jobs"
+			title="Background jobs"
+			:summary="jobsSummary"
+			:severity="jobs.stale ? 'warn' : 'ok'"
+			:loading="loading.jobs"
+			:error="errors.jobs"
+			@refresh="refresh('jobs')">
 			<dl class="nc-tower-facts">
-				<dt>Path</dt><dd class="nc-tower-mono">{{ info.nc_logfile || '—' }}</dd>
-				<dt>Size</dt><dd>{{ info.nc_logfile_size || '—' }}</dd>
-				<dt>Update channel</dt><dd>{{ info.nc_updatechannel || '—' }}</dd>
+				<dt>Cron mode</dt><dd>{{ jobs.cron_mode || '—' }}</dd>
+				<dt>Last cron age</dt>
+				<dd :class="jobs.stale ? 'nc-tower-bad' : ''">
+					{{ jobs.lastcron_age_s != null ? `${Math.round(jobs.lastcron_age_s / 60)} min` : '—' }}
+				</dd>
+				<dt>Job count</dt><dd>{{ jobs.job_count ?? '—' }}</dd>
+				<dt>Oldest class</dt><dd class="nc-tower-mono">{{ jobs.oldest_class || '—' }}</dd>
 			</dl>
+		</Section>
+
+		<Section id="system.nc-security"
+			title="Security"
+			:summary="ncSecuritySummary"
+			:severity="(bruteforce.total_24h || 0) > 20 ? 'warn' : 'ok'"
+			:loading="loading.bruteforce || loading.sessions"
+			:error="errors.bruteforce || errors.sessions"
+			@refresh="refreshNcSecurity">
+			<h4 class="nc-tower-subhead">Bruteforce (24 h)</h4>
+			<DataTable :columns="bfColumns" :rows="bruteforce.rows || []" empty-text="No attempts" />
+			<h4 class="nc-tower-subhead">Sessions / devices</h4>
+			<DataTable :columns="sessionColumns" :rows="sessions.rows || []" empty-text="None">
+				<template #cell-last_activity="{ row }">
+					{{ row.last_activity ? new Date(row.last_activity * 1000).toISOString() : '—' }}
+				</template>
+			</DataTable>
+		</Section>
+
+		<Section id="system.shares"
+			title="Share audit"
+			:summary="shareSummary"
+			:severity="(shares.passwordless_count || 0) > 0 ? 'warn' : 'ok'"
+			:loading="loading.shares"
+			:error="errors.shares"
+			@refresh="refresh('shares')">
+			<DataTable :columns="shareColumns" :rows="shares.risky || []" empty-text="No risky public links">
+				<template #cell-has_password="{ row }">{{ row.has_password ? 'yes' : 'NO' }}</template>
+				<template #cell-no_expiry="{ row }">{{ row.no_expiry ? 'none' : 'set' }}</template>
+			</DataTable>
+		</Section>
+
+		<Section id="system.bloat"
+			title="Storage bloat"
+			:summary="bloatSummary"
+			:loading="loading.bloat"
+			:error="errors.bloat"
+			@refresh="refresh('bloat')">
+			<DataTable :columns="bloatColumns" :rows="bloatRows" empty-text="No data" />
 		</Section>
 	</div>
 </template>
 
 <script>
+import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
 import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
 import DataTable from '../components/DataTable.vue'
 import Section from '../components/Section.vue'
@@ -108,13 +205,23 @@ import Poller from '../services/poll.js'
 
 export default {
 	name: 'System',
-	components: { DataTable, Section, UsageBar, NcNoteCard },
+	components: { DataTable, Section, UsageBar, NcButton, NcNoteCard },
 	data() {
 		return {
 			fmt,
 			info: {},
 			storage: {},
 			sql: {},
+			log: {},
+			logLevel: 'error',
+			logQuery: '',
+			setup: {},
+			jobs: {},
+			bruteforce: {},
+			sessions: {},
+			shares: {},
+			bloat: {},
+			maintenance: {},
 			loading: {},
 			errors: {},
 			diskColumns: [
@@ -130,6 +237,43 @@ export default {
 				{ key: 'speed', label: 'Speed' },
 				{ key: 'IPv4', label: 'IPv4' },
 				{ key: 'MAC', label: 'MAC', mono: true },
+			],
+			logColumns: [
+				{ key: 'time', label: 'Time' },
+				{ key: 'level', label: 'Level' },
+				{ key: 'app', label: 'App' },
+				{ key: 'reqId', label: 'ReqId', mono: true },
+				{ key: 'message', label: 'Message' },
+			],
+			setupColumns: [
+				{ key: 'severity', label: 'Sev' },
+				{ key: 'category', label: 'Category' },
+				{ key: 'name', label: 'Check' },
+				{ key: 'description', label: 'Detail' },
+			],
+			bfColumns: [
+				{ key: 'ip', label: 'IP' },
+				{ key: 'action', label: 'Action' },
+				{ key: 'attempts', label: 'Attempts', align: 'end' },
+			],
+			sessionColumns: [
+				{ key: 'uid', label: 'User' },
+				{ key: 'name', label: 'Device' },
+				{ key: 'type', label: 'Type' },
+				{ key: 'last_activity', label: 'Last activity' },
+			],
+			shareColumns: [
+				{ key: 'owner', label: 'Owner' },
+				{ key: 'target', label: 'Target' },
+				{ key: 'has_password', label: 'Password' },
+				{ key: 'no_expiry', label: 'Expiry' },
+				{ key: 'expired', label: 'Expired' },
+			],
+			bloatColumns: [
+				{ key: 'bucket', label: 'Bucket' },
+				{ key: 'bytes_h', label: 'Size' },
+				{ key: 'files', label: 'Files', align: 'end' },
+				{ key: 'pct', label: '% of data dir', align: 'end' },
 			],
 		}
 	},
@@ -153,10 +297,6 @@ export default {
 		ramPercent() {
 			return parseFloat(String(this.info.ram_percent || '0'))
 		},
-		// /storage returns the datadirectory PATH in `folder`; the byte counts
-		// live in folder4/folder44 (used), folder3/folder33 (total) and
-		// folder2/folder22 (free). Rendering `folder` printed a path where a
-		// size was implied.
 		storagePath() {
 			const folder = this.storage.folder
 			return typeof folder === 'string' ? folder : '—'
@@ -195,6 +335,47 @@ export default {
 			}
 			return parts.join(' · ')
 		},
+		logSummary() {
+			return `${(this.log.rows || []).length} line(s)`
+		},
+		setupSummary() {
+			const e = this.setup.error_count || 0
+			const w = this.setup.warn_count || 0
+			return e || w ? `${e} error · ${w} warn` : `${(this.setup.checks || []).length} checks`
+		},
+		setupSeverity() {
+			if ((this.setup.error_count || 0) > 0) {
+				return 'crit'
+			}
+			return (this.setup.warn_count || 0) > 0 ? 'warn' : 'ok'
+		},
+		jobsSummary() {
+			if (this.jobs.stale) {
+				return 'cron stale'
+			}
+			return this.jobs.job_count != null ? `${this.jobs.job_count} jobs` : ''
+		},
+		ncSecuritySummary() {
+			return `${this.bruteforce.total_24h || 0} bruteforce · ${(this.sessions.rows || []).length} sessions`
+		},
+		shareSummary() {
+			const n = this.shares.passwordless_count || 0
+			return n ? `${n} passwordless public` : `${(this.shares.risky || []).length} risky`
+		},
+		bloatSummary() {
+			const s = this.bloat.sizes || {}
+			const trash = s.trashbin?.bytes || 0
+			return trash ? `trash ${fmt.bytes(trash)}` : ''
+		},
+		bloatRows() {
+			const s = this.bloat.sizes || {}
+			return Object.keys(s).map((bucket) => ({
+				bucket,
+				bytes_h: fmt.bytes(s[bucket].bytes || 0),
+				files: s[bucket].files,
+				pct: s[bucket].pct_of_datadir != null ? `${s[bucket].pct_of_datadir}%` : '—',
+			}))
+		},
 	},
 	created() {
 		this.poller = new Poller()
@@ -202,19 +383,44 @@ export default {
 			this.fetch('info', '/systeminfo'),
 			this.fetch('storage', '/storage'),
 			this.fetch('sql', '/sqlinfo'),
+			this.fetch('maintenance', '/ncadmin/maintenance'),
 		]), 60000)
+		this.poller.add('log', () => this.refreshLog(), 60000)
+		this.poller.add('setup', () => this.fetch('setup', '/ncadmin/setupchecks'), 300000)
+		this.poller.add('jobs', () => this.fetch('jobs', '/ncadmin/jobs'), 120000)
+		this.poller.add('bruteforce', () => this.fetch('bruteforce', '/ncadmin/bruteforce'), 120000)
+		this.poller.add('sessions', () => this.fetch('sessions', '/ncadmin/sessions'), 120000)
+		this.poller.add('shares', () => this.fetch('shares', '/ncadmin/shares'), 300000)
+		this.poller.add('bloat', () => this.fetch('bloat', '/ncadmin/bloat'), 300000)
 		this.poller.start()
 	},
 	beforeDestroy() {
 		this.poller.stop()
 	},
 	methods: {
-		/**
-		 * @param {string} [name] section to refresh; omit for all
-		 * @return {Promise<void>}
-		 */
 		refresh(name) {
 			return this.poller.refresh(name)
+		},
+		refreshNcSecurity() {
+			return Promise.all([
+				this.poller.refresh('bruteforce'),
+				this.poller.refresh('sessions'),
+			])
+		},
+		async refreshLog() {
+			this.$set(this.loading, 'log', true)
+			try {
+				this.log = await get('/ncadmin/log', {
+					lines: 200,
+					level: this.logLevel || undefined,
+					query: this.logQuery || undefined,
+				})
+				this.$set(this.errors, 'log', '')
+			} catch (error) {
+				this.$set(this.errors, 'log', error.message)
+			} finally {
+				this.$set(this.loading, 'log', false)
+			}
 		},
 		async fetch(key, path) {
 			this.$set(this.loading, key, true)

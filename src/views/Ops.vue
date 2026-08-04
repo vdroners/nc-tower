@@ -197,6 +197,23 @@
 					</template>
 					<template #cell-used_pct="{ row }"><UsageBar :percent="row.used_pct" /></template>
 				</DataTable>
+				<h4 class="nc-tower-subhead">SMART trend (min / now / max)</h4>
+				<NcNoteCard v-if="errors.smartHistory" type="info">
+					SMART history unavailable (sidecar update may be needed): {{ errors.smartHistory }}
+				</NcNoteCard>
+				<DataTable v-else
+					:columns="smartTrendColumns"
+					:rows="smartHistory.summary || []"
+					row-key="serial"
+					empty-text="No trend samples yet (sampler runs every 10 min)">
+					<template #cell-temp_min="{ row }">{{ row.temp_min != null ? `${row.temp_min}°C` : '—' }}</template>
+					<template #cell-temp_now="{ row }">{{ row.temp_now != null ? `${row.temp_now}°C` : '—' }}</template>
+					<template #cell-temp_max="{ row }">
+						<span :class="{ 'nc-tower-warn-text': row.temp_max != null && row.temp_max >= 55 }">
+							{{ row.temp_max != null ? `${row.temp_max}°C` : '—' }}
+						</span>
+					</template>
+				</DataTable>
 			</template>
 		</Section>
 
@@ -429,6 +446,32 @@
 				empty-text="No interfaces">
 				<template #cell-addresses="{ row }">{{ fmt.addresses(row) || '—' }}</template>
 			</DataTable>
+			<template v-if="hostNetwork.network_depth">
+				<h4 class="nc-tower-subhead">Routes</h4>
+				<DataTable :columns="routeColumns"
+					:rows="hostNetwork.routes?.items || []"
+					empty-text="No routes" />
+				<h4 class="nc-tower-subhead">DNS</h4>
+				<NcNoteCard v-if="hostNetwork.dns?.unavailable" type="warning">{{ hostNetwork.dns.reason }}</NcNoteCard>
+				<dl v-else class="nc-tower-facts">
+					<dt>Nameservers</dt>
+					<dd>{{ (hostNetwork.dns?.nameservers || []).join(', ') || '—' }}</dd>
+					<dt>Search / domains</dt>
+					<dd>{{ (hostNetwork.dns?.domains || hostNetwork.dns?.search || []).join(', ') || '—' }}</dd>
+				</dl>
+				<h4 class="nc-tower-subhead">Listening TCP</h4>
+				<DataTable :columns="listenerColumns"
+					:rows="hostNetwork.listeners?.items || []"
+					empty-text="No listeners" />
+				<h4 class="nc-tower-subhead">NIC detail</h4>
+				<DataTable :columns="nicDetailColumns"
+					:rows="hostNetwork.nic_detail || []"
+					row-key="ifname"
+					empty-text="No NIC detail (ethtool)" />
+			</template>
+			<NcNoteCard v-else-if="hostNetwork.ok !== false" type="info">
+				Sidecar update needed for network depth (routes / DNS / listeners / NIC).
+			</NcNoteCard>
 		</Section>
 
 		<Section id="ops.ollama"
@@ -599,6 +642,7 @@ export default {
 			df: {},
 			gpu: {},
 			smart: {},
+			smartHistory: {},
 			chassisFan: {},
 			containers: {},
 			stacks: {},
@@ -612,6 +656,14 @@ export default {
 			cronDraft: '',
 			backupInv: {},
 			hostNetwork: {},
+			storageTopo: {},
+			posture: {},
+			kernelLog: {},
+			hardware: {},
+			ncJobs: {},
+			ncSetup: {},
+			ncBruteforce: {},
+			ncShares: {},
 			ollama: {},
 			audit: {},
 			system: {},
@@ -765,9 +817,37 @@ export default {
 				{ key: 'latest_handshake', label: 'Handshake' },
 			],
 			hostIfColumns: [
-				{ key: 'name', label: 'Interface' },
-				{ key: 'state', label: 'State' },
+				{ key: 'ifname', label: 'Interface' },
+				{ key: 'operstate', label: 'State' },
 				{ key: 'addresses', label: 'Addresses' },
+			],
+			routeColumns: [
+				{ key: 'dst', label: 'Destination' },
+				{ key: 'gateway', label: 'Gateway' },
+				{ key: 'dev', label: 'Dev' },
+				{ key: 'protocol', label: 'Proto' },
+				{ key: 'metric', label: 'Metric', align: 'end' },
+			],
+			listenerColumns: [
+				{ key: 'local', label: 'Local' },
+				{ key: 'process', label: 'Process' },
+			],
+			nicDetailColumns: [
+				{ key: 'ifname', label: 'Interface' },
+				{ key: 'speed', label: 'Speed' },
+				{ key: 'duplex', label: 'Duplex' },
+				{ key: 'driver', label: 'Driver' },
+				{ key: 'firmware', label: 'Firmware' },
+			],
+			smartTrendColumns: [
+				{ key: 'device', label: 'Device' },
+				{ key: 'serial', label: 'Serial', mono: true },
+				{ key: 'temp_min', label: 'Temp min', align: 'end' },
+				{ key: 'temp_now', label: 'Temp now', align: 'end' },
+				{ key: 'temp_max', label: 'Temp max', align: 'end' },
+				{ key: 'reallocated', label: 'Realloc', align: 'end' },
+				{ key: 'pending', label: 'Pending', align: 'end' },
+				{ key: 'samples', label: 'Samples', align: 'end' },
 			],
 			ollamaColumns: [
 				{ key: 'name', label: 'Model' },
@@ -787,6 +867,7 @@ export default {
 				host: this.host,
 				containers: this.containers,
 				smart: this.smart,
+				smartHistory: this.smartHistory,
 				gpu: this.gpu,
 				inbox: this.inbox,
 				packages: this.packages,
@@ -794,6 +875,14 @@ export default {
 				updates: this.appUpdates,
 				chassisFan: this.chassisFan,
 				backup: this.backupInv,
+				storage: this.storageTopo,
+				posture: this.posture,
+				kernelLog: this.kernelLog,
+				hardware: this.hardware,
+				ncJobs: this.ncJobs,
+				ncSetup: this.ncSetup,
+				ncBruteforce: this.ncBruteforce,
+				ncShares: this.ncShares,
 			})
 		},
 		sev() {
@@ -1020,6 +1109,15 @@ export default {
 		p.add('volumes', () => this.fetch('volumes', '/tower/docker/volumes'), 120000)
 		p.add('networks', () => this.fetch('networks', '/tower/docker/networks'), 120000)
 		p.add('hostNetwork', () => this.fetch('hostNetwork', '/tower/network'), 120000)
+		p.add('smartHistory', () => this.fetch('smartHistory', '/tower/smart/history', { hours: 24 }), 300000)
+		p.add('storageTopo', () => this.fetch('storageTopo', '/tower/storage'), 300000)
+		p.add('posture', () => this.fetch('posture', '/tower/posture'), 120000)
+		p.add('kernelLog', () => this.fetch('kernelLog', '/tower/kernel-log', { minutes: 1440 }), 300000)
+		p.add('hardware', () => this.fetch('hardware', '/tower/hardware'), 300000)
+		p.add('ncJobs', () => this.fetch('ncJobs', '/ncadmin/jobs'), 120000)
+		p.add('ncSetup', () => this.fetch('ncSetup', '/ncadmin/setupchecks'), 300000)
+		p.add('ncBruteforce', () => this.fetch('ncBruteforce', '/ncadmin/bruteforce'), 300000)
+		p.add('ncShares', () => this.fetch('ncShares', '/ncadmin/shares'), 300000)
 		p.add('ollama', () => this.fetch('ollama', '/tower/ollama'), 120000)
 		p.add('audit', () => this.fetch('audit', '/tower/audit', { limit: 200 }), 120000)
 		p.add('cron', () => this.loadCron(), 300000)

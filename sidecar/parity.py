@@ -361,7 +361,7 @@ def parse_smart_attributes(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
-SIDECAR_VERSION = "1.14.0"
+SIDECAR_VERSION = "1.15.0"
 CAPABILITIES = [
     "chassis-fan-write",
     "chassis-fan-history",
@@ -375,6 +375,13 @@ CAPABILITIES = [
     "smart-attributes",
     "backup-delete",
     "network",
+    "network-depth",
     "ollama",
     "audit",
+    "hardware",
+    "storage-topology",
+    "temperatures",
+    "posture",
+    "kernel-log",
+    "smart-history",
 ]

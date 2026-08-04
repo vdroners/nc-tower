@@ -71,11 +71,6 @@
 		</div>
 		<p v-if="!chassisFans.length && !loading" class="nc-tower-muted">No chassis fans detected.</p>
 
-		<FanCharts :history="historySamples"
-			:fans="chassisFans"
-			:temps="chassisTemps"
-			:window-minutes.sync="historyMinutes" />
-
 		<h4 class="nc-tower-subhead">GPU fans</h4>
 		<NcNoteCard v-if="gpuFan.unavailable" type="warning">
 			GPU fan control unavailable: {{ gpuFan.reason }}
@@ -126,7 +121,6 @@ import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
 import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
 import NcTextField from '@nextcloud/vue/dist/Components/NcTextField.js'
 
-import FanCharts from './FanCharts.vue'
 import { get, post } from '../services/api.js'
 
 const DEFAULT_PROFILES = ['silent', 'balanced', 'performance']
@@ -150,7 +144,7 @@ const MODE_LABELS = {
  */
 export default {
 	name: 'FanPanel',
-	components: { FanCharts, NcButton, NcNoteCard, NcTextField },
+	components: { NcButton, NcNoteCard, NcTextField },
 	data() {
 		return {
 			loading: false,
@@ -159,8 +153,6 @@ export default {
 			chassisFan: {},
 			gpuFan: {},
 			systemd: {},
-			historySamples: [],
-			historyMinutes: 60,
 			draftPct: {},
 			gpuAllSpeed: '40',
 			gpuDraft: {},
@@ -170,9 +162,6 @@ export default {
 	computed: {
 		chassisFans() {
 			return this.chassisFan.fans || this.chassisFan.items || []
-		},
-		chassisTemps() {
-			return this.chassisFan.temps || []
 		},
 		warnings() {
 			return this.chassisFan.warnings || []
@@ -215,9 +204,6 @@ export default {
 		},
 	},
 	watch: {
-		historyMinutes() {
-			this.loadHistory()
-		},
 		summary: {
 			immediate: true,
 			handler(value) {
@@ -260,7 +246,7 @@ export default {
 			return MODE_LABELS[mode] || (mode != null ? `mode ${mode}` : '—')
 		},
 		/**
-		 * Reload chassis, GPU, history, and systemd fancontrol status.
+		 * Reload chassis, GPU, and systemd fancontrol status.
 		 * @return {Promise<void>}
 		 */
 		async refresh() {
@@ -268,16 +254,13 @@ export default {
 			this.error = ''
 			this.$emit('loading', true)
 			try {
-				const [chassis, gpu, history, systemd] = await Promise.all([
+				const [chassis, gpu, systemd] = await Promise.all([
 					get('/tower/chassis-fan'),
 					get('/tower/fan').catch((err) => ({ unavailable: true, reason: err.message })),
-					get('/tower/chassis-fan/history', { minutes: this.historyMinutes })
-						.catch(() => ({ samples: [] })),
 					get('/tower/systemd').catch(() => ({})),
 				])
 				this.chassisFan = chassis || {}
 				this.gpuFan = gpu || {}
-				this.historySamples = history.samples || []
 				this.systemd = systemd || {}
 			} catch (err) {
 				this.error = err.message || 'Fan refresh failed'
@@ -286,14 +269,6 @@ export default {
 			} finally {
 				this.loading = false
 				this.$emit('loading', false)
-			}
-		},
-		async loadHistory() {
-			try {
-				const history = await get('/tower/chassis-fan/history', { minutes: this.historyMinutes })
-				this.historySamples = history.samples || []
-			} catch (err) {
-				showError(err.message)
 			}
 		},
 		/**

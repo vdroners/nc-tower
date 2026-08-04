@@ -39,10 +39,43 @@ check G01 "version readable" test -n "$ver"
 check G16 "LICENSE" test -f LICENSE
 check G16 "CREDITS.md" test -f CREDITS.md
 check G16 "CREDITS names Wolfgang" grep -q 'Wolfgang' CREDITS.md
-check G16 "README Attribution" grep -qi 'Attribution\|Fork lineage\|zomtec2311/admincockpit' README.md
-check G16 "info.xml upstream author" grep -q 'Wolfgang' appinfo/info.xml
+check G16 "README Attribution" grep -qi 'Attribution\|Fork lineage\|Heritage\|CREDITS.md' README.md
+check G16 "info.xml sole author Sarge" grep -q '>Sarge</author>' appinfo/info.xml
+if grep -q 'Wolfgang' appinfo/info.xml; then
+  note_fail G16 "info.xml still lists Wolfgang as author (heritage belongs in CREDITS.md)"
+else
+  echo "PASS G16 info.xml no Wolfgang author"
+fi
 check G16 "app id nc_tower" grep -q '<id>nc_tower</id>' appinfo/info.xml
 check G16 "name NC Tower" grep -q '<name>NC Tower</name>' appinfo/info.xml
+
+# --- G30 PHP syntax (1.14.0 provenance scrub left unterminated /** headers) ---
+g30_lint() {
+  find lib appinfo templates -name '*.php' -print0 2>/dev/null \
+    | xargs -0 -n1 php -l 2>&1 | grep -v 'No syntax errors' || true
+}
+if command -v php >/dev/null 2>&1; then
+  bad=$(g30_lint)
+  if [[ -n "$bad" ]]; then
+    note_fail G30 "php -l failures"
+    printf '%s\n' "$bad" | sed 's/^/    /'
+  else
+    echo "PASS G30 all PHP files lint clean"
+  fi
+elif [[ -n "$(docker ps -q -f name=cloud_app 2>/dev/null)" ]]; then
+  img=$(docker inspect -f '{{.Image}}' cloud_app)
+  bad=$(docker run --rm -v "$ROOT:/src:ro" --workdir /src --entrypoint sh "$img" -c \
+    'find lib appinfo templates -name "*.php" -print0 | xargs -0 -n1 php -l 2>&1' \
+    | grep -v 'No syntax errors' || true)
+  if [[ -n "$bad" ]]; then
+    note_fail G30 "php -l failures"
+    printf '%s\n' "$bad" | sed 's/^/    /'
+  else
+    echo "PASS G30 all PHP files lint clean"
+  fi
+else
+  echo "SKIP G30 php -l (no php-cli / cloud_app)"
+fi
 
 # --- G10 routes -------------------------------------------------------------
 for route in "page#ops" "page#host" "page#tools" "tower#hostGpu" "tower#fanSet" \
@@ -268,6 +301,32 @@ bad = [x for x in disks if x.get("power_on_hours") is not None and 0 < x["power_
 nas_ok = all("ok" in n for n in (d.get("nas_mounts") or []))
 sys.exit(0 if not bad and nas_ok else 1)
 '
+  # --- G31 host inventory payload shape (1.15.0) ---
+  payload_gate G31 /host/hardware '
+import sys, json
+d = json.load(sys.stdin)
+sys.exit(0 if d.get("ok") and isinstance(d.get("dmi"), dict) and isinstance(d.get("cpu"), dict) else 1)
+'
+  payload_gate G31 /host/storage '
+import sys, json
+d = json.load(sys.stdin)
+sys.exit(0 if d.get("ok") and isinstance(d.get("raid"), dict) and "lsblk" in d else 1)
+'
+  payload_gate G31 /host/posture '
+import sys, json
+d = json.load(sys.stdin)
+sys.exit(0 if d.get("ok") and "ntp" in d and isinstance(d.get("certs"), list) else 1)
+'
+fi
+
+# --- G32 NC admin routes registered (1.15.0) ---
+if grep -q "ncAdmin#log" appinfo/routes.php \
+  && grep -q "ncAdmin#setupChecks" appinfo/routes.php \
+  && grep -q "ncAdmin#jobs" appinfo/routes.php \
+  && test -f lib/Controller/NcAdminController.php; then
+  echo "PASS G32 NC admin routes + controller present"
+else
+  note_fail G32 "ncadmin routes / NcAdminController missing"
 fi
 
 exit "$fail"

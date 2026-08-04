@@ -22,6 +22,17 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from chassis_fan import ChassisFanController
+from inventory import (
+    SmartTrendSampler,
+    collect_hardware,
+    collect_kernel_log,
+    collect_posture,
+    collect_storage,
+    collect_temperatures,
+    extend_network_depth,
+    smart_history_read,
+    smart_history_summarize,
+)
 from parity import (
     CAPABILITIES,
     SIDECAR_VERSION,
@@ -129,6 +140,7 @@ DOCKER_CLEANUP_SCRIPT = _env(
 _AUDIT_LOCK = threading.Lock()
 _PUBLIC_IP_CACHE: dict[str, Any] = {}
 _CHASSIS: ChassisFanController | None = None
+_SMART_SAMPLER: SmartTrendSampler | None = None
 _META_RE = re.compile(r"[;|&$`]")
 _SAFE_EVENT_SINCE_RE = re.compile(r"^[0-9]{1,7}(?:s|m|h|d)?$")
 _FORBIDDEN_EXEC = {
@@ -2041,7 +2053,87 @@ def host_smart_attributes(device: str) -> dict[str, Any]:
 
 
 def host_network() -> dict[str, Any]:
-    return host_network_payload(run=_run, nsenter_bin=_nsenter_bin, public_ip_cache=_PUBLIC_IP_CACHE)
+    payload = host_network_payload(run=_run, nsenter_bin=_nsenter_bin, public_ip_cache=_PUBLIC_IP_CACHE)
+    try:
+        return extend_network_depth(payload, run=_run, nsenter_bin=_nsenter_bin)
+    except Exception as exc:  # noqa: BLE001
+        payload["network_depth_error"] = str(exc)
+        return payload
+
+
+def host_hardware() -> dict[str, Any]:
+    try:
+        return collect_hardware(run=_run, nsenter_bin=_nsenter_bin, host_proc=HOST_PROC)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "unavailable": True, "reason": str(exc)}
+
+
+def host_storage() -> dict[str, Any]:
+    try:
+        ctl = _which(SMARTCTL) or _which("smartctl")
+        return collect_storage(run=_run, nsenter_bin=_nsenter_bin, smartctl=ctl)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "unavailable": True, "reason": str(exc)}
+
+
+def host_temperatures() -> dict[str, Any]:
+    try:
+        chassis = host_chassis_fan()
+    except Exception:  # noqa: BLE001
+        chassis = {}
+    try:
+        gpu = host_gpu()
+    except Exception:  # noqa: BLE001
+        gpu = {}
+    try:
+        smart = host_smart()
+    except Exception:  # noqa: BLE001
+        smart = {}
+    return collect_temperatures(chassis_status=chassis, gpu_payload=gpu, smart_payload=smart)
+
+
+def host_posture() -> dict[str, Any]:
+    targets = _csv_env("SERVICE_TARGETS", "", "NC_TOWER_SERVICE_TARGETS")
+    try:
+        return collect_posture(run=_run, nsenter_bin=_nsenter_bin, service_targets=targets)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "unavailable": True, "reason": str(exc)}
+
+
+def host_kernel_log_get(minutes: int = 60) -> dict[str, Any]:
+    try:
+        return collect_kernel_log(run=_run, nsenter_bin=_nsenter_bin, minutes=minutes)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "unavailable": True, "reason": str(exc)}
+
+
+def _smart_trend_disks() -> list[dict[str, Any]]:
+    payload = host_smart()
+    disks = []
+    for d in payload.get("disks") or payload.get("items") or []:
+        if not isinstance(d, dict):
+            continue
+        disks.append(
+            {
+                "device": d.get("device") or d.get("name"),
+                "serial": d.get("serial") or d.get("serial_number"),
+                "model": d.get("model"),
+                "temp_c": d.get("temp_c"),
+                "reallocated": d.get("reallocated") or d.get("reallocated_sector_ct"),
+                "pending": d.get("pending") or d.get("current_pending_sector"),
+                "power_on_hours": d.get("power_on_hours"),
+                "health": d.get("health"),
+            }
+        )
+    return disks
+
+
+def host_smart_history(hours: int = 24) -> dict[str, Any]:
+    path = OPS_ROOT / "state" / "smart-trend.jsonl"
+    result = smart_history_read(path, hours=hours)
+    if result.get("ok"):
+        result["summary"] = smart_history_summarize(result.get("samples") or [])
+    return result
 
 
 def host_ollama() -> dict[str, Any]:
@@ -2291,6 +2383,26 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"ifaces": _interfaces(), "ts": time.time()})
             elif path == "/host/network":
                 self._send(200, host_network())
+            elif path == "/host/hardware":
+                self._send(200, host_hardware())
+            elif path == "/host/storage":
+                self._send(200, host_storage())
+            elif path == "/host/temperatures":
+                self._send(200, host_temperatures())
+            elif path == "/host/posture":
+                self._send(200, host_posture())
+            elif path == "/host/kernel-log":
+                try:
+                    minutes = int((query.get("minutes") or ["60"])[0])
+                except ValueError:
+                    minutes = 60
+                self._send(200, host_kernel_log_get(minutes))
+            elif path == "/host/smart/history":
+                try:
+                    hours = int((query.get("hours") or ["24"])[0])
+                except ValueError:
+                    hours = 24
+                self._send(200, host_smart_history(hours))
             elif path == "/host/ollama":
                 self._send(200, host_ollama())
             elif path == "/host/systemd":
@@ -2453,6 +2565,17 @@ def main() -> None:
     except Exception as exc:  # noqa: BLE001
         audit(f"chassis-fan startup re-apply error={exc}")
     controller.start_sampler()
+    global _SMART_SAMPLER
+    try:
+        _SMART_SAMPLER = SmartTrendSampler(
+            OPS_ROOT / "state" / "smart-trend.jsonl",
+            _smart_trend_disks,
+            interval_s=600,
+        )
+        _SMART_SAMPLER.start()
+        audit("smart-trend sampler started")
+    except Exception as exc:  # noqa: BLE001
+        audit(f"smart-trend sampler error={exc}")
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True
     print(
