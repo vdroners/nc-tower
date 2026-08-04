@@ -3,7 +3,8 @@
 **Version 1.16.0**
 
 NC Tower is the Nextcloud orchestrator for this GCS host: Nextcloud admin, Docker
-day-ops, host health and the ops inbox in one place, so routine work does not need
+day-ops (Portainer-style container groups), host inventory with hardware
+visualizations, and the ops inbox in one place — so routine work does not need
 Portainer, Webmin or an SSH session.
 
 Maintained by **Sarge** / **vdroners** (19labs). AGPL-3.0-or-later — see [LICENSE](LICENSE)
@@ -33,17 +34,24 @@ one ever appears.
 | Tab | What it gives you |
 |---|---|
 | **Home** | Health verdict for the host plus a tile per area |
-| **Ops** | Verdict banner and attention list first; then containers, stacks, host and disks, SMART (+ trend), GPU, fans (profiles), engine, images, volumes, networks, host network depth/VPN, Ollama, audit, cron, backup, ops inbox |
-| **Host** | Hardware inventory (export), storage topology, temperatures, posture, kernel log; mounts, package updates, processes, systemd, cron, network |
-| **Apps** · **System** · **Users** | Nextcloud administration (System: log viewer, setup checks, jobs, security, shares, bloat) |
-| **Tools** | Deep links to Portainer, Webmin, Kuma, Caddy, Guacamole, WebODM, OrcaSlicer, ADSB, MediaMTX (configure URLs in Settings → NC Tower; empty = hidden) |
+| **Ops** | Verdict banner + snoozable attention list; Portainer-style containers (project groups, state chips, inline actions, UsageBars, clickable ports, parsed stats/inspect); stacks; host/disks; SMART (+ temp sparklines); GPU; fans; Docker engine + disk usage; images/volumes/networks; host network depth (NIC link chips, routes, DNS, listeners) / VPN; Ollama; audit; cron; backup; ops inbox (grouped by monitor, archive-stale) |
+| **Host** | Hardware inventory with visualizations (CPU topology chips, DIMM slot map, PCIe class badges, Markdown/JSON export); storage capacity map + lsblk tree; TempStrip heat bars + 24 h package-temp history; security posture; kernel log; mounts; package updates; processes; systemd; cron |
+| **Apps** · **System** · **Users** | Nextcloud administration (System: log viewer, setup checks, jobs, security/bruteforce/sessions, share audit, storage bloat; `loglevel` exposed for debug-logging guard) |
+| **Tools** | **Legacy consoles — superseded by Tower** (Webmin/Portainer + absorbed ops deep-links as second opinion); external apps (Kuma, Caddy, Guacamole, WebODM, OrcaSlicer, ADSB, MediaMTX). Configure URLs in Settings → NC Tower; empty = hidden |
 
 Ops leads with a verdict — all clear, needs attention, or critical — over the findings that
-produced it, with detail sections collapsed behind. The rules live in
-[`src/services/health.js`](src/services/health.js) and cover unhealthy and exited
-containers, disk pressure, SMART health and drive age, temperatures, critical ops alerts,
-stale backups, pending package updates, and Nextcloud's own health (available update,
-oversized `nextcloud.log`, app updates). Anything flagged opens its own section.
+produced it. WARN items can be **Snoozed** for 7 days (CRIT cannot); the banner uses only
+unsnoozed items. The rules live in [`src/services/health.js`](src/services/health.js) and
+cover unhealthy/exited containers, disk pressure, SMART FAIL (age alone is silent when
+SMART still PASSes), CPU package temp (warn 70°C / crit 85°C), RAID/NTP/certs/MCE/OOM,
+**active** ops inbox warnings (last 24 h, deduped by monitor — not every historic file),
+stale backups, pending packages, Nextcloud update / oversized log / **debug loglevel**,
+cron stale, setup-check errors, bruteforce spike, and passwordless shares. Anything flagged
+opens its own section.
+
+Containers are grouped by compose project with collapse and filter chips persisted in
+localStorage. Stack actions appear on matching project headers; Docker disk usage stays
+under the engine section (`/tower/docker/df`, read-only — no prune).
 
 Sections refresh on their own schedules (containers 10 s … SMART and packages 300 s) and
 pause entirely while the browser tab is hidden.
@@ -56,6 +64,9 @@ and offers a toggle. Nothing is hidden silently.
 The System tab reports the Nextcloud *container's* filesystems and network; the Host tab
 reports the physical host. They legitimately differ and are labelled accordingly.
 
+Operator detail: [docs/OPS_PANELS.md](docs/OPS_PANELS.md). Capability matrix:
+[docs/CAPABILITY_MATRIX.md](docs/CAPABILITY_MATRIX.md).
+
 ## Security never-list
 
 NC Tower does **not**:
@@ -63,10 +74,12 @@ NC Tower does **not**:
 - Mount `/var/run/docker.sock` into the Nextcloud PHP container (`cloud_app`)
 - Offer a host shell, a file manager, or an unrestricted Portainer clone
 - Run `docker system prune` or volume prune
-- Manage VPN peers (use the NC WireGuard app) or Ollama models
+- Manage VPN peers (use the NC WireGuard app)
+- Toggle Nextcloud maintenance mode from the UI (status chip only — use `occ` on the host)
 
-Allowlisted **container exec** is supported as a one-shot argv with no shell. Destructive
-actions require the operation typed out to confirm.
+Allowlisted **container exec** is supported as a one-shot argv with no shell. Ollama model
+list/pull/delete is allowlisted. Destructive actions require the operation typed out to
+confirm.
 
 Mutations are deny-first: `NC_TOWER_CONTAINER_DENY` wins over `NC_TOWER_CONTAINER_ALLOW`,
 so `cloud_*`, the sidecar itself, Portainer, `wg-easy`, `talk_*` and `*openclaw*` can never
@@ -133,6 +146,8 @@ The gates are the safety net, so they check behaviour rather than only file pres
 | G24 | User storage does not depend on an API that Nextcloud 31–34 lacks |
 | G25 | Contested URLs resolve to their intended handler, asked of the real router |
 | G26 | House style: icon component, no Unicode glyphs, `nc-tower-` prefix, tests present |
+| G31–G32 | Host inventory payload shape; NC admin routes present (1.15) |
+| G33–G35 | Containers carry `health`/`uptime`; ops-inbox has `active_warnings`; temp-history + archive-stale routes (1.16) |
 
 G20, G23, G24 and G25 each exist because of a real defect: shipped code passed every route and
 file gate while the values it displayed were wrong, webpack compiles a template that reads
@@ -176,10 +191,11 @@ installed Vue. Where npm blocks dependency install scripts, that never runs and 
 `export 'Fragment' was not found in 'vue-demi'`. `scripts/fix-vue-demi.mjs` runs from
 `prebuild` to make the build deterministic either way — don't remove it.
 
-Changes big enough to need a plan get one checked into `docs/plans/` first;
-[`control-tower-vue-rebuild.md`](docs/plans/control-tower-vue-rebuild.md) is the most
-recent. See also [docs/CAPABILITY_MATRIX.md](docs/CAPABILITY_MATRIX.md) for what is
-deliberately in, deep-linked, or refused.
+Changes big enough to need a plan get one checked into `docs/plans/` first. Recent:
+[`host-viz-containers-attention.md`](docs/plans/host-viz-containers-attention.md) (1.16),
+[`host-inventory-observability.md`](docs/plans/host-inventory-observability.md) (1.15).
+See [docs/CAPABILITY_MATRIX.md](docs/CAPABILITY_MATRIX.md) for what is deliberately in,
+deep-linked, or refused.
 
 ## Heritage
 
