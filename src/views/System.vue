@@ -30,8 +30,8 @@
 		<Section id="system.resources"
 			title="Memory and storage"
 			:summary="resourceSummary"
-			:loading="loading.info"
-			:error="errors.info"
+			:loading="resourcesLoading"
+			:error="resourcesError"
 			default-open
 			@refresh="refresh('info')">
 			<div class="nc-tower-chips">
@@ -182,13 +182,26 @@ export default {
 			}
 			return Array.isArray(ext) ? ext.join(', ') : String(ext)
 		},
+		resourcesLoading() {
+			return !!(this.loading.info || this.loading.storage || this.loading.sql)
+		},
+		resourcesError() {
+			const parts = []
+			if (this.errors.storage) {
+				parts.push(`storage: ${this.errors.storage}`)
+			}
+			if (this.errors.sql) {
+				parts.push(`database: ${this.errors.sql}`)
+			}
+			return parts.join(' · ')
+		},
 	},
 	created() {
 		this.poller = new Poller()
 		this.poller.add('info', () => Promise.all([
 			this.fetch('info', '/systeminfo'),
-			this.fetch('storage', '/storage', 'info'),
-			this.fetch('sql', '/sqlinfo', 'info'),
+			this.fetch('storage', '/storage'),
+			this.fetch('sql', '/sqlinfo'),
 		]), 60000)
 		this.poller.start()
 	},
@@ -198,21 +211,20 @@ export default {
 	methods: {
 		/**
 		 * @param {string} [name] section to refresh; omit for all
-		 * @return {Promise<void>} resolves once the loaders settle
+		 * @return {Promise<void>}
 		 */
 		refresh(name) {
 			return this.poller.refresh(name)
 		},
-		async fetch(key, path, loadingKey) {
-			const slot = loadingKey || key
-			this.$set(this.loading, slot, true)
+		async fetch(key, path) {
+			this.$set(this.loading, key, true)
 			try {
 				this[key] = await get(path)
-				this.$set(this.errors, slot, '')
+				this.$set(this.errors, key, '')
 			} catch (error) {
-				this.$set(this.errors, slot, error.message)
+				this.$set(this.errors, key, error.message)
 			} finally {
-				this.$set(this.loading, slot, false)
+				this.$set(this.loading, key, false)
 			}
 		},
 	},

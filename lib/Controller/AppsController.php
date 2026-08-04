@@ -29,6 +29,8 @@ use OCA\NcTower\Service\MyService;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\AdminRequired;
+use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IConfig;
@@ -43,8 +45,8 @@ use Psr\Log\LoggerInterface;
 /**
  * Apps admin surface using public OCP APIs only.
  *
- * App Store install/update requires private Installer APIs that are not in OCP —
- * those features are stubbed; enable/disable stays available via IAppManager.
+ * App Store install/update is driven from the Vue client via appstore OCS
+ * (not OC\Installer in this PHP). Enable/disable stays on IAppManager.
  */
 class AppsController extends Controller {
 	private MyService $myService;
@@ -82,67 +84,85 @@ class AppsController extends Controller {
 		$this->l = $l;
 	}
 
+	#[AdminRequired]
+	#[NoCSRFRequired]
 	public function appsinfo(): DataResponse {
 		try {
-			$thisapps = $this->appManager->getAllAppsInAppsFolders();
+			$thisapps = array_values($this->appManager->getAllAppsInAppsFolders());
 			sort($thisapps);
 			$ncinfo = $this->myService->getNCInfo();
 			$parts = explode('.', $ncinfo['nc_version']);
 			$version = (int)$parts[0];
 			if ($version < 32) {
-				$thisappsenabled = $this->appManager->getEnabledAppsForUser($this->userSession->getUser());
+				$thisappsenabled = array_values($this->appManager->getEnabledAppsForUser($this->userSession->getUser()));
 			} else {
-				$thisappsenabled = $this->appManager->getEnabledApps();
+				$thisappsenabled = array_values($this->appManager->getEnabledApps());
 			}
-			$thisappsdisabled = array_diff($thisapps, $thisappsenabled);
-			$thisappsdisabledfull = $this->appsfull($thisappsdisabled);
+			$thisappsdisabled = array_values(array_diff($thisapps, $thisappsenabled));
+			// Build enable/disable lists first so a settings-section failure still
+			// returns a usable Apps tab.
 			$thisappsenabledfull = $this->appsfull($thisappsenabled);
-			$getadminsections = $this->settingManager->getAdminSections();
-			$getpersonalsections = $this->settingManager->getPersonalSections();
+			$thisappsdisabledfull = $this->appsfull($thisappsdisabled);
+
 			$adminsections = [];
 			$adminsectionsappname = [];
 			$adminsectionsappicon = [];
-			$i = 0;
-			foreach ($getadminsections as $dummy) {
-				foreach ($dummy as $adminsection) {
-					if ($adminsection->getID() != 'additional') {
-						$adminsections[$i] = $adminsection->getID();
-						$adminsectionsappname[$i] = $adminsection->getName() ?: $adminsection->getID();
-						$adminsectionsappicon[$i] = $adminsection->getIcon();
-					}
-					$i++;
-				}
-			}
 			$personalsections = [];
 			$personalsectionsappname = [];
 			$personalsectionsappicon = [];
-			$i = 0;
-			foreach ($getpersonalsections as $dummy) {
-				foreach ($dummy as $personalsection) {
-					if ($personalsection->getID() != 'calendar') {
-						$personalsections[$i] = $personalsection->getID();
-						$personalsectionsappname[$i] = $personalsection->getName() ?: $personalsection->getID();
-						$personalsectionsappicon[$i] = $personalsection->getIcon();
+			$settingsError = null;
+			try {
+				$getadminsections = $this->settingManager->getAdminSections();
+				$getpersonalsections = $this->settingManager->getPersonalSections();
+				$i = 0;
+				foreach ($getadminsections as $dummy) {
+					foreach ($dummy as $adminsection) {
+						if ($adminsection->getID() != 'additional') {
+							$adminsections[] = $adminsection->getID();
+							$adminsectionsappname[] = $adminsection->getName() ?: $adminsection->getID();
+							$adminsectionsappicon[] = $adminsection->getIcon();
+						}
+						$i++;
 					}
-					$i++;
 				}
+				$i = 0;
+				foreach ($getpersonalsections as $dummy) {
+					foreach ($dummy as $personalsection) {
+						if ($personalsection->getID() != 'calendar') {
+							$personalsections[] = $personalsection->getID();
+							$personalsectionsappname[] = $personalsection->getName() ?: $personalsection->getID();
+							$personalsectionsappicon[] = $personalsection->getIcon();
+						}
+						$i++;
+					}
+				}
+			} catch (\Throwable $e) {
+				$settingsError = $e->getMessage();
+				$this->logger->warning(
+					'NcTower: settings section enum failed in appsinfo: ' . $e->getMessage(),
+					['app' => 'nc_tower']
+				);
 			}
 
-			return new DataResponse([
-				'adminsections' => $adminsections,
-				'adminsectionsappname' => $adminsectionsappname,
-				'adminsectionsappicon' => $adminsectionsappicon,
-				'personalsections' => $personalsections,
-				'personalsectionsappname' => $personalsectionsappname,
-				'personalsectionsappicon' => $personalsectionsappicon,
+			$payload = [
+				'adminsections' => array_values($adminsections),
+				'adminsectionsappname' => array_values($adminsectionsappname),
+				'adminsectionsappicon' => array_values($adminsectionsappicon),
+				'personalsections' => array_values($personalsections),
+				'personalsectionsappname' => array_values($personalsectionsappname),
+				'personalsectionsappicon' => array_values($personalsectionsappicon),
 				'allapps' => count($thisapps),
 				'appsenabled' => count($thisappsenabled),
 				'thisapps' => $thisapps,
 				'thisappsenabled' => $thisappsenabled,
 				'thisappsdisabled' => $thisappsdisabled,
-				'thisappsdisabledfull' => $thisappsdisabledfull,
-				'thisappsenabledfull' => $thisappsenabledfull,
-			]);
+				'thisappsdisabledfull' => array_values($thisappsdisabledfull),
+				'thisappsenabledfull' => array_values($thisappsenabledfull),
+			];
+			if ($settingsError !== null) {
+				$payload['settings_error'] = $settingsError;
+			}
+			return new DataResponse($payload);
 		} catch (\Throwable $e) {
 			$this->logger->error(
 				'NcTower: FATAL ERROR or EXCEPTION in AppsController->appsinfo: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
@@ -202,14 +222,14 @@ class AppsController extends Controller {
 
 	public function disableapp($who): DataResponse {
 		try {
-			if ($this->appManager->isInstalled($who)) {
+			if ($this->appManager->isEnabledForAnyone($who)) {
 				$this->appManager->disableApp($who, false);
 				return new DataResponse(['ok' => true, 'appid' => $who]);
 			}
 			return new DataResponse([
 				'ok' => false,
 				'appid' => $who,
-				'error' => 'app not installed',
+				'error' => 'app not enabled',
 			], Http::STATUS_BAD_REQUEST);
 		} catch (\Throwable $e) {
 			$this->logger->error(
@@ -242,12 +262,12 @@ class AppsController extends Controller {
 	}
 
 	/**
-	 * App Store updates require private OC\Installer — not available via OCP.
+	 * Legacy PHP stub — live updates use client-side appstore OCS.
 	 */
 	public function updateapp(string $who): JSONResponse {
 		return new JSONResponse([
 			'data' => [
-				'message' => $this->l->t('In-app updates are not available. Use Nextcloud Apps management.'),
+				'message' => $this->l->t('Use NC Tower Apps (appstore OCS) or Settings → Apps.'),
 				'appid' => $who,
 				'available' => false,
 			],
@@ -255,21 +275,27 @@ class AppsController extends Controller {
 	}
 
 	/**
-	 * Listing pending App Store updates requires private Installer APIs.
+	 * Legacy stub kept for old clients. Vue uses src/services/appstoreOcs.js.
 	 */
+	#[AdminRequired]
+	#[NoCSRFRequired]
 	public function getAppsWithUpdates(): DataResponse {
 		return new DataResponse([
 			'apps' => [],
 			'appscount' => 0,
 			'available' => false,
-			'message' => $this->l->t('App update listing is not available via public APIs. Use Nextcloud Apps management.'),
+			'message' => $this->l->t('Update listing moved to appstore OCS in the browser. Use Settings → Apps if the client cannot reach the store.'),
 		]);
 	}
 
+	#[AdminRequired]
+	#[NoCSRFRequired]
 	public function listCategories(): JSONResponse {
 		return new JSONResponse([]);
 	}
 
+	#[AdminRequired]
+	#[NoCSRFRequired]
 	public function isnoti(): DataResponse {
 		$ncinfo = $this->myService->getNCInfo();
 		$parts = explode('.', $ncinfo['nc_version']);
@@ -287,6 +313,8 @@ class AppsController extends Controller {
 		]);
 	}
 
+	#[AdminRequired]
+	#[NoCSRFRequired]
 	public function islogcleaner(): DataResponse {
 		$ncinfo = $this->myService->getNCInfo();
 		$parts = explode('.', $ncinfo['nc_version']);

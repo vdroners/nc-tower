@@ -34,6 +34,9 @@
 			empty until it is back. Check the <code>nc_tower_sidecar</code> container and that
 			<code>nc_tower_sidecar_token</code> matches <code>sidecar/.env</code>.
 		</NcNoteCard>
+		<NcNoteCard v-if="ncApiDown" type="warning">
+			Some Nextcloud Tower APIs failed ({{ ncApiErrors.join(', ') }}). Cards may show “—” until those endpoints recover.
+		</NcNoteCard>
 	</div>
 </template>
 
@@ -44,6 +47,7 @@ import AttentionList from '../components/AttentionList.vue'
 import TowerChart from '../components/TowerChart.vue'
 import StatusBanner from '../components/StatusBanner.vue'
 import { get } from '../services/api.js'
+import { listAppUpdates } from '../services/appstoreOcs.js'
 import fmt from '../services/format.js'
 import { assess } from '../services/health.js'
 import Poller from '../services/poll.js'
@@ -67,10 +71,14 @@ export default {
 			busy: false,
 			updatedAt: '',
 			sidecarDown: false,
+			ncApiErrors: [],
 			timeline: {},
 		}
 	},
 	computed: {
+		ncApiDown() {
+			return this.ncApiErrors.length > 0
+		},
 		verdict() {
 			return assess({
 				host: this.host,
@@ -208,7 +216,7 @@ export default {
 		p.add('timeline', () => this.fetch('timeline', '/tower/ops-timeline?hours=24'), 300000)
 		p.add('system', () => this.fetch('system', '/systeminfo'), 120000)
 		p.add('users', () => this.fetch('users', '/usercount'), 300000)
-		p.add('updates', () => this.fetch('updates', '/appupdates'), 300000)
+		p.add('updates', () => this.fetchUpdates(), 300000)
 		p.add('smart', () => this.fetch('smart', '/tower/smart'), 300000)
 		p.start()
 	},
@@ -218,10 +226,18 @@ export default {
 	methods: {
 		/**
 		 * @param {string} [name] section to refresh; omit for all
-		 * @return {Promise<void>} resolves once the loaders settle
+		 * @return {Promise<void>}
 		 */
 		refresh(name) {
 			return this.poller.refresh(name)
+		},
+		clearNcError(label) {
+			this.ncApiErrors = this.ncApiErrors.filter((item) => item !== label)
+		},
+		noteNcError(label) {
+			if (!this.ncApiErrors.includes(label)) {
+				this.ncApiErrors = [...this.ncApiErrors, label]
+			}
 		},
 		async fetch(key, path) {
 			try {
@@ -229,11 +245,30 @@ export default {
 				this.updatedAt = new Date().toLocaleTimeString()
 				if (path.startsWith('/tower/')) {
 					this.sidecarDown = false
+				} else {
+					this.clearNcError(key)
 				}
 			} catch (error) {
 				if (path.startsWith('/tower/') && (error.data?.error === 'sidecar_unavailable' || error.status === 502)) {
 					this.sidecarDown = true
+				} else if (!path.startsWith('/tower/')) {
+					this.noteNcError(key)
 				}
+			}
+		},
+		async fetchUpdates() {
+			try {
+				this.updates = await listAppUpdates()
+				this.updatedAt = new Date().toLocaleTimeString()
+				this.clearNcError('updates')
+			} catch (error) {
+				this.updates = {
+					available: false,
+					apps: [],
+					appscount: 0,
+					message: error.message,
+				}
+				this.noteNcError('updates')
 			}
 		},
 		async refreshAll() {

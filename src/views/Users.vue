@@ -39,7 +39,7 @@
 								<template #icon><NcTowerIcon name="edit" :size="18" /></template>
 								Edit
 							</NcActionButton>
-							<NcActionButton @click="openNotify(row.uid, false)">
+							<NcActionButton :disabled="!notificationsEnabled" :title="notifyHint" @click="openNotify(row.uid, false)">
 								<template #icon><NcTowerIcon name="bell" :size="18" /></template>
 								Notify
 							</NcActionButton>
@@ -67,7 +67,7 @@
 				<template #cell-actions="{ row }">
 					<div class="nc-tower-actions-cell">
 						<NcActions :aria-label="`Actions for ${row.gid}`">
-							<NcActionButton @click="openNotify(row.gid, true)">
+							<NcActionButton :disabled="!notificationsEnabled" :title="notifyHint" @click="openNotify(row.gid, true)">
 								<template #icon><NcTowerIcon name="bell" :size="18" /></template>
 								Notify group
 							</NcActionButton>
@@ -113,11 +113,12 @@
 		</NcDialog>
 
 		<NcDialog :open="notify.open" :name="notify.group ? 'Notify group' : 'Notify user'" size="normal" @update:open="notify.open = false">
-			<p>Send a notification to <strong>{{ notify.who }}</strong>.</p>
-			<NcTextField :value.sync="notify.message" label="Message" />
+			<p v-if="!notificationsEnabled" class="nc-tower-muted">{{ notifyHint }}</p>
+			<p v-else>Send a notification to <strong>{{ notify.who }}</strong>.</p>
+			<NcTextField :value.sync="notify.message" label="Message" :disabled="!notificationsEnabled" />
 			<template #actions>
 				<NcButton type="tertiary" @click="notify.open = false">Cancel</NcButton>
-				<NcButton type="primary" :disabled="!notify.message.trim()" @click="sendNotify">Send</NcButton>
+				<NcButton type="primary" :disabled="!notificationsEnabled || !notify.message.trim()" @click="sendNotify">Send</NcButton>
 			</template>
 		</NcDialog>
 
@@ -162,6 +163,8 @@ export default {
 			},
 			confirm: { open: false, title: '', message: '', confirmLabel: 'Confirm', phrase: '', danger: false },
 			pendingAction: null,
+			notificationsEnabled: false,
+			notificationsChecked: false,
 			userColumns: [
 				{ key: 'uid', label: 'User ID' },
 				{ key: 'displayname', label: 'Display name' },
@@ -206,11 +209,20 @@ export default {
 			return list.filter((row) => `${row.uid} ${row.displayname || ''} ${row.email || ''}`
 				.toLowerCase().includes(query))
 		},
+		notifyHint() {
+			if (!this.notificationsChecked) {
+				return 'Checking notifications app…'
+			}
+			return this.notificationsEnabled
+				? 'Send a Nextcloud notification'
+				: 'Enable the notifications app to send alerts from here'
+		},
 	},
 	created() {
 		this.poller = new Poller()
 		this.poller.add('data', () => this.fetch('data', '/usercount'), 120000)
 		this.poller.start()
+		this.checkNotifications()
 	},
 	beforeDestroy() {
 		this.poller.stop()
@@ -218,10 +230,20 @@ export default {
 	methods: {
 		/**
 		 * @param {string} [name] section to refresh; omit for all
-		 * @return {Promise<void>} resolves once the loaders settle
+		 * @return {Promise<void>}
 		 */
 		refresh(name) {
 			return this.poller.refresh(name)
+		},
+		async checkNotifications() {
+			try {
+				const data = await get('/isnoti')
+				this.notificationsEnabled = String(data?.isnoti) === 'true'
+			} catch (error) {
+				this.notificationsEnabled = false
+			} finally {
+				this.notificationsChecked = true
+			}
 		},
 		async fetch(key, path) {
 			this.$set(this.loading, key, true)
@@ -394,6 +416,10 @@ export default {
 			}
 		},
 		openNotify(who, group) {
+			if (!this.notificationsEnabled) {
+				showError(this.notifyHint)
+				return
+			}
 			this.notify = { open: true, who, group, message: '' }
 		},
 		async sendNotify() {

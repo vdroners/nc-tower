@@ -28,8 +28,7 @@ declare(strict_types=1);
 namespace OCA\NcTower\Controller;
 
 use OCP\AppFramework\Controller;
-use OCP\AppFramework\Http\Attribute\FrontpageRoute;
-use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCP\AppFramework\Http\Attribute\AdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\IL10N;
 use OCP\IConfig;
@@ -82,6 +81,8 @@ class SystemController extends Controller {
 
     
     
+    #[AdminRequired]
+    #[NoCSRFRequired]
     public function storage(): DataResponse {
         try {
             $folder = $this->config->getSystemValue('datadirectory');
@@ -128,6 +129,8 @@ class SystemController extends Controller {
         }
     } 
     
+    #[AdminRequired]
+    #[NoCSRFRequired]
     public function sqlinfo(): DataResponse {
         try {
              $thisdb = $this->config->getSystemValue('dbtype');
@@ -215,6 +218,8 @@ class SystemController extends Controller {
         return $sapi !== '' ? ('php-' . $sapi) : 'unknown';
     }
  
+    #[AdminRequired]
+    #[NoCSRFRequired]
     public function systeminfo(): DataResponse {
         try {
             $cpu = $this->myService->getCpuInfo();
@@ -272,6 +277,8 @@ class SystemController extends Controller {
         }
     }
 
+    #[AdminRequired]
+    #[NoCSRFRequired]
     public function widgetinfo(): DataResponse {
         try {
             $ncinfo = $this->myService->getNCInfo();

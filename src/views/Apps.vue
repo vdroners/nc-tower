@@ -1,7 +1,7 @@
 <template>
 	<div class="nc-tower-view">
 		<h2>Apps</h2>
-		<p class="nc-tower-view__lead">Enable and disable Nextcloud apps installed on this server. Store updates live in Nextcloud Apps.</p>
+		<p class="nc-tower-view__lead">Enable and disable Nextcloud apps installed on this server. Store updates use the App Store API.</p>
 
 		<Section id="apps.updates"
 			title="Updates"
@@ -15,11 +15,15 @@
 				{{ updates.message || 'App update listing is not available here.' }}
 				Use <strong>Settings → Apps</strong> for store updates.
 			</NcNoteCard>
-			<DataTable :columns="updateColumns" :rows="updates.apps || []" row-key="id" empty-text="Update listing unavailable — use Nextcloud Apps">
+			<DataTable
+				:columns="updateTableColumns"
+				:rows="updates.apps || []"
+				row-key="id"
+				:empty-text="updatesEmptyText">
 				<template #cell-name="{ row }">
 					<span class="nc-tower-app"><img v-if="row.icon" :src="row.icon" alt="" class="nc-tower-app__icon">{{ appLabel(row) }}</span>
 				</template>
-				<template #cell-actions="{ row }">
+				<template v-if="updates.available !== false" #cell-actions="{ row }">
 					<div class="nc-tower-actions-cell">
 						<NcButton type="primary" :disabled="busy === row.id" @click="update(row)">
 							{{ busy === row.id ? 'Updating…' : `Update to ${row.updateVersion}` }}
@@ -31,7 +35,7 @@
 
 		<Section id="apps.enabled"
 			title="Enabled apps"
-			:summary="`${(info.thisappsenabledfull || []).length} enabled`"
+			:summary="enabledSummary"
 			:loading="loading.info"
 			:error="errors.info"
 			default-open
@@ -39,7 +43,7 @@
 			<div class="nc-tower-toolbar">
 				<NcTextField :value.sync="filter" label="Filter apps" placeholder="Filter by name or id" />
 			</div>
-			<DataTable :columns="appColumns" :rows="filtered(info.thisappsenabledfull)" row-key="appid" default-sort="appid" empty-text="None">
+			<DataTable :columns="appColumns" :rows="filtered(enabledApps)" row-key="appid" default-sort="appid" :empty-text="infoEmptyText">
 				<template #cell-appid="{ row }">
 					<span class="nc-tower-app"><img v-if="row.icon" :src="row.icon" alt="" class="nc-tower-app__icon">{{ appLabel(row) }}</span>
 				</template>
@@ -60,11 +64,11 @@
 
 		<Section id="apps.disabled"
 			title="Disabled apps"
-			:summary="`${(info.thisappsdisabledfull || []).length} disabled`"
+			:summary="disabledSummary"
 			:loading="loading.info"
 			:error="errors.info"
 			@refresh="refresh('info')">
-			<DataTable :columns="appColumns" :rows="filtered(info.thisappsdisabledfull)" row-key="appid" default-sort="appid" empty-text="None">
+			<DataTable :columns="appColumns" :rows="filtered(disabledApps)" row-key="appid" default-sort="appid" :empty-text="infoEmptyText">
 				<template #cell-appid="{ row }">
 					<span class="nc-tower-app"><img v-if="row.icon" :src="row.icon" alt="" class="nc-tower-app__icon">{{ appLabel(row) }}</span>
 				</template>
@@ -79,14 +83,17 @@
 
 		<Section id="apps.sections"
 			title="Settings sections"
-			:summary="`${(info.adminsections || []).length} admin · ${(info.personalsections || []).length} personal`"
+			:summary="sectionsSummary"
 			:loading="loading.info"
 			:error="errors.info"
 			@refresh="refresh('info')">
+			<NcNoteCard v-if="info.settings_error" type="warning">
+				Settings sections could not be enumerated: {{ info.settings_error }}
+			</NcNoteCard>
 			<h4 class="nc-tower-subhead">Admin</h4>
-			<p class="nc-tower-muted">{{ (info.adminsectionsappname || []).join(', ') || '—' }}</p>
+			<p class="nc-tower-muted">{{ (adminSectionNames || []).join(', ') || '—' }}</p>
 			<h4 class="nc-tower-subhead">Personal</h4>
-			<p class="nc-tower-muted">{{ (info.personalsectionsappname || []).join(', ') || '—' }}</p>
+			<p class="nc-tower-muted">{{ (personalSectionNames || []).join(', ') || '—' }}</p>
 		</Section>
 
 		<ConfirmDialog v-bind="confirm"
@@ -105,7 +112,22 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DataTable from '../components/DataTable.vue'
 import Section from '../components/Section.vue'
 import { get } from '../services/api.js'
+import { listAppUpdates, updateApp } from '../services/appstoreOcs.js'
 import Poller from '../services/poll.js'
+
+/**
+ * @param {unknown} value list-like payload
+ * @return {unknown[]}
+ */
+function asList(value) {
+	if (Array.isArray(value)) {
+		return value
+	}
+	if (value && typeof value === 'object') {
+		return Object.values(value)
+	}
+	return []
+}
 
 export default {
 	name: 'Apps',
@@ -113,7 +135,7 @@ export default {
 	data() {
 		return {
 			info: {},
-			updates: {},
+			updates: { available: true, apps: [], appscount: 0 },
 			loading: {},
 			errors: {},
 			filter: '',
@@ -135,6 +157,48 @@ export default {
 		}
 	},
 	computed: {
+		enabledApps() {
+			return asList(this.info.thisappsenabledfull)
+		},
+		disabledApps() {
+			return asList(this.info.thisappsdisabledfull)
+		},
+		adminSectionNames() {
+			return asList(this.info.adminsectionsappname)
+		},
+		personalSectionNames() {
+			return asList(this.info.personalsectionsappname)
+		},
+		enabledSummary() {
+			if (this.loading.info && !this.enabledApps.length) {
+				return 'loading…'
+			}
+			return `${this.enabledApps.length} enabled`
+		},
+		disabledSummary() {
+			if (this.loading.info && !this.disabledApps.length) {
+				return 'loading…'
+			}
+			return `${this.disabledApps.length} disabled`
+		},
+		sectionsSummary() {
+			return `${asList(this.info.adminsections).length} admin · ${asList(this.info.personalsections).length} personal`
+		},
+		infoEmptyText() {
+			return this.loading.info ? 'Loading…' : 'None'
+		},
+		updatesEmptyText() {
+			if (this.updates.available === false) {
+				return 'Update listing unavailable — use Nextcloud Apps'
+			}
+			return this.loading.updates ? 'Loading…' : 'No pending updates'
+		},
+		updateTableColumns() {
+			if (this.updates.available === false) {
+				return this.updateColumns.filter((col) => col.key !== 'actions')
+			}
+			return this.updateColumns
+		},
 		updateSummary() {
 			if (this.updates.available === false) {
 				return this.updates.message || 'listing unavailable — use Nextcloud Apps'
@@ -145,8 +209,8 @@ export default {
 	},
 	created() {
 		this.poller = new Poller()
-		this.poller.add('info', () => this.fetch('info', '/appsinfo'), 120000)
-		this.poller.add('updates', () => this.fetch('updates', '/appupdates'), 300000)
+		this.poller.add('info', () => this.fetchInfo(), 120000)
+		this.poller.add('updates', () => this.fetchUpdates(), 300000)
 		this.poller.start()
 	},
 	beforeDestroy() {
@@ -155,28 +219,43 @@ export default {
 	methods: {
 		/**
 		 * @param {string} [name] section to refresh; omit for all
-		 * @return {Promise<void>} resolves once the loaders settle
+		 * @return {Promise<void>}
 		 */
 		refresh(name) {
 			return this.poller.refresh(name)
 		},
-		async fetch(key, path) {
-			this.$set(this.loading, key, true)
+		async fetchInfo() {
+			this.$set(this.loading, 'info', true)
 			try {
-				this[key] = await get(path)
-				this.$set(this.errors, key, '')
+				const payload = await get('/appsinfo')
+				this.info = payload && typeof payload === 'object' ? payload : {}
+				this.$set(this.errors, 'info', '')
 			} catch (error) {
-				this.$set(this.errors, key, error.message)
+				this.$set(this.errors, 'info', error.message)
 			} finally {
-				this.$set(this.loading, key, false)
+				this.$set(this.loading, 'info', false)
+			}
+		},
+		async fetchUpdates() {
+			this.$set(this.loading, 'updates', true)
+			try {
+				this.updates = await listAppUpdates()
+				this.$set(this.errors, 'updates', '')
+			} catch (error) {
+				this.updates = {
+					available: false,
+					apps: [],
+					appscount: 0,
+					message: error.message || 'Could not reach the App Store API. Is the appstore app enabled?',
+				}
+				this.$set(this.errors, 'updates', '')
+			} finally {
+				this.$set(this.loading, 'updates', false)
 			}
 		},
 		/**
-		 * Prefer flattened string `name` from appsfull(); keep a defensive
-		 * nested-object walk for any stale payload still in flight.
-		 *
 		 * @param {object} row app row
-		 * @return {string} display label
+		 * @return {string}
 		 */
 		appLabel(row) {
 			const name = row?.name
@@ -249,10 +328,10 @@ export default {
 		async update(row) {
 			this.busy = row.id
 			try {
-				await get(`/updateapp/${encodeURIComponent(row.id)}`)
-				showError('In-app updates are not available — use Nextcloud Apps')
+				await updateApp(row.id)
+				showSuccess(`Updated ${row.id}`)
 			} catch (error) {
-				showError(error.message || 'In-app updates are not available — use Nextcloud Apps')
+				showError(error.message || 'Update failed')
 			} finally {
 				this.busy = ''
 				await this.poller.refresh('updates')

@@ -2,12 +2,12 @@
 	<div class="nc-tower-widget">
 		<NcLoadingIcon v-if="loading" :size="24" />
 		<template v-else>
-			<div class="nc-tower-widget__verdict" :class="`nc-tower-widget__verdict--${verdict.level}`">
-				<SeverityDot :level="verdict.level" />
+			<div class="nc-tower-widget__verdict" :class="`nc-tower-widget__verdict--${displayLevel}`">
+				<SeverityDot :level="displayLevel" />
 				<strong>{{ headline }}</strong>
 			</div>
-			<ul v-if="verdict.items.length" class="nc-tower-widget__items">
-				<li v-for="(item, index) in verdict.items.slice(0, 4)" :key="index">
+			<ul v-if="displayItems.length" class="nc-tower-widget__items">
+				<li v-for="(item, index) in displayItems.slice(0, 4)" :key="index">
 					<SeverityDot :level="item.severity" />
 					<span>{{ item.title }}</span>
 				</li>
@@ -23,22 +23,55 @@ import { generateUrl } from '@nextcloud/router'
 import NcLoadingIcon from '@nextcloud/vue/dist/Components/NcLoadingIcon.js'
 import SeverityDot from '../components/SeverityDot.vue'
 import { get } from '../services/api.js'
-import { assess } from '../services/health.js'
+import { assess, WARN } from '../services/health.js'
 
 export default {
 	name: 'Widget',
 	components: { NcLoadingIcon, SeverityDot },
 	data() {
-		return { loading: true, host: {}, containers: {}, smart: {}, inbox: {} }
+		return {
+			loading: true,
+			host: {},
+			containers: {},
+			smart: {},
+			inbox: {},
+			fetchOk: 0,
+			fetchFail: 0,
+		}
 	},
 	computed: {
 		verdict() {
 			return assess({ host: this.host, containers: this.containers, smart: this.smart, inbox: this.inbox })
 		},
+		sidecarDown() {
+			return this.fetchOk === 0 && this.fetchFail > 0
+		},
+		displayLevel() {
+			if (this.sidecarDown) {
+				return WARN
+			}
+			return this.verdict.level
+		},
+		displayItems() {
+			if (this.sidecarDown) {
+				return [{ severity: WARN, title: 'NC Tower sidecar unreachable' }]
+			}
+			return this.verdict.items
+		},
 		headline() {
+			if (this.sidecarDown) {
+				return 'Sidecar down'
+			}
+			// Never claim "All clear" unless at least one fetch succeeded.
+			if (this.fetchOk === 0) {
+				return 'Status unknown'
+			}
 			return { ok: 'All clear', warn: 'Needs attention', crit: 'Critical' }[this.verdict.level]
 		},
 		facts() {
+			if (this.sidecarDown) {
+				return 'Host and Docker checks did not load'
+			}
 			const counts = this.containers.counts || {}
 			return `${counts.running || 0}/${counts.total || 0} containers running`
 		},
@@ -50,8 +83,9 @@ export default {
 		const load = async (key, path) => {
 			try {
 				this[key] = await get(path)
+				this.fetchOk += 1
 			} catch (error) {
-				// Widget stays quiet if the sidecar is down; the Ops tab explains why.
+				this.fetchFail += 1
 			}
 		}
 		await Promise.all([

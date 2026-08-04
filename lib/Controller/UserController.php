@@ -28,8 +28,8 @@ declare(strict_types=1);
 namespace OCA\NcTower\Controller;
 
 use OCP\AppFramework\Controller;
-use OCP\AppFramework\Http\Attribute\FrontpageRoute;
-use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\AdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\IL10N;
 use OCP\IConfig;
@@ -81,6 +81,8 @@ class UserController extends Controller {
         $this->l = $l;
     }
 
+    #[AdminRequired]
+    #[NoCSRFRequired]
     public function usercount(): DataResponse {
         try {
             $users = $this->userManager->search('');
@@ -255,6 +257,8 @@ class UserController extends Controller {
         }
     }
     
+    #[AdminRequired]
+    #[NoCSRFRequired]
     public function edituser($who): DataResponse {
         try {
             $user =$this->userManager->get($who);
@@ -304,11 +308,15 @@ class UserController extends Controller {
         
         if ($user->getDisplayName() <> $displayname) $user->setDisplayName($displayname);
         if ($password) {
-            if ($user->setPassword($password, null)) {
-                $this->logger->info('NcTower: password updated for ' . $uid);
-            } else {
+            if (!$user->setPassword($password, null)) {
                 $this->logger->warning('NcTower: password update failed for ' . $uid);
+                return new JSONResponse([
+                    'ok' => false,
+                    'uid' => $uid,
+                    'error' => 'password update failed',
+                ], Http::STATUS_BAD_REQUEST);
             }
+            $this->logger->info('NcTower: password updated for ' . $uid);
         }
         if ($user->getEMailAddress() <> $email) $user->setEMailAddress($email);
         if ($oldgroups <> $groups) {
@@ -331,7 +339,8 @@ class UserController extends Controller {
                         $this->myService->deleteadmingroup($uid, $x);
                 }                
         }
-        if ($user->getQuota() <> $quota) {
+        // Compare against the resolved quota value ($uquota), not the display label.
+        if ($user->getQuota() <> $uquota) {
             $user->setQuota($uquota);
         }
         if ($user->getManagerUids() <> $managerids) {
@@ -352,6 +361,8 @@ class UserController extends Controller {
 		   ]);
     }
     
+    #[AdminRequired]
+    #[NoCSRFRequired]
     public function userexists($who): DataResponse {
             return new DataResponse([
                 'exists' => $this->userManager->get($who) !== null,

@@ -23,7 +23,7 @@
 		</header>
 		<div v-show="open" :id="`nc-tower-body-${id}`" class="nc-tower-section__body">
 			<NcNoteCard v-if="error" type="error">{{ error }}</NcNoteCard>
-			<slot v-else />
+			<slot />
 		</div>
 	</section>
 </template>

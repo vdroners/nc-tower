@@ -887,10 +887,10 @@ export default {
 		async mutate(promise, okMessage, after) {
 			try {
 				const result = await promise
-				if (result.ok === false) {
-					showError(result.error || result.stderr || 'Action failed')
-				} else {
+				if (result && result.ok === true) {
 					showSuccess(okMessage)
+				} else {
+					showError(result?.error || result?.stderr || 'Action failed')
 				}
 			} catch (error) {
 				showError(error.message)

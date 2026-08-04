@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.13.0] - 2026-08-04
+
+### Added
+- Live App Store update listing/action via client `appstore` OCS (`appstoreOcs.js`)
+- Checked-in plan: `.cursor/plans/nc-tower-live-apps-ocs.md`
+
+### Fixed
+- Apps/System/User read GETs: `NoCSRFRequired` + resilient `appsinfo` lists
+- Widget no longer shows false “All clear” when sidecar fetches fail
+- System tab: per-endpoint errors; sections still render partial data
+- `saveuser` compares/sets resolved quota; password failure returns `{ok: false}`
+- Home banners non-sidecar NC API failures; Ops mutate requires `ok === true`
+- Users Notify gated on `/isnoti`; dashboard widget URL → Ops
+
+### Changed
+- PHP `/appupdates` remains a legacy stub; Vue no longer polls it for live data
+
 ## [1.12.3] - 2026-08-03
 
 ### Fixed
