@@ -66,9 +66,17 @@
 									<template #icon><NcTowerIcon name="x" :size="18" /></template>
 									Kill
 								</NcActionButton>
-							<NcActionButton v-if="row.mutable" @click="ask('recreate', row.name)">
+							<NcActionButton v-if="row.mutable" @click="openRecreate(row.name)">
 									<template #icon><NcTowerIcon name="rotate" :size="18" /></template>
-									Recreate
+									Recreate…
+								</NcActionButton>
+							<NcActionButton v-if="row.mutable" @click="openRename(row.name)">
+									<template #icon><NcTowerIcon name="edit" :size="18" /></template>
+									Rename…
+								</NcActionButton>
+							<NcActionButton v-if="row.loggable || row.mutable" @click="toggleStats(row.name)">
+									<template #icon><NcTowerIcon name="activity" :size="18" /></template>
+									{{ statsOpen[row.name] ? 'Hide stats' : 'Stats' }}
 								</NcActionButton>
 							<NcActionButton v-if="row.mutable" @click="openExec(row.name)">
 									<template #icon><NcTowerIcon name="terminal" :size="18" /></template>
@@ -78,6 +86,10 @@
 					</div>
 				</template>
 			</DataTable>
+			<div v-for="(blob, name) in statsOpen" :key="`stats-${name}`" class="nc-tower-stats-panel">
+				<strong>{{ name }}</strong>
+				<pre class="nc-tower-pre">{{ blob }}</pre>
+			</div>
 			<p class="nc-tower-muted">{{ lockedCount }} container(s) outside the sidecar allowlist. {{ lockedHint }}</p>
 		</Section>
 
@@ -166,7 +178,18 @@
 							{{ row.power_on_hours != null ? `${row.power_on_hours} h (${fmt.years(row.power_on_hours)})` : '—' }}
 						</span>
 					</template>
+					<template #cell-actions="{ row }">
+						<div class="nc-tower-actions-cell">
+							<NcButton type="tertiary" @click="toggleSmartAttrs(row.device)">
+								{{ smartAttrs[row.device] ? 'Hide' : 'Attributes' }}
+							</NcButton>
+						</div>
+					</template>
 				</DataTable>
+				<div v-for="(attrs, device) in smartAttrs" :key="device" class="nc-tower-stats-panel">
+					<strong>{{ device }} attributes</strong>
+					<DataTable :columns="smartAttrColumns" :rows="attrs" empty-text="No attributes" />
+				</div>
 				<h4 class="nc-tower-subhead">Network mounts</h4>
 				<DataTable :columns="nasColumns" :rows="smart.nas_mounts || []" row-key="path" empty-text="No network mounts">
 					<template #cell-ok="{ row }">
@@ -174,7 +197,6 @@
 					</template>
 					<template #cell-used_pct="{ row }"><UsageBar :percent="row.used_pct" /></template>
 				</DataTable>
-				<p class="nc-tower-muted">Full SMART attributes stay in Webmin → SMART Health.</p>
 			</template>
 		</Section>
 
@@ -208,19 +230,11 @@
 			:summary="fanSummary"
 			:loading="loading.fan"
 			:error="errors.fan"
-			@refresh="refresh('fan')">
-			<template v-if="!fan.unavailable">
-				<div class="nc-tower-toolbar">
-					<NcTextField :value.sync="fanSpeed" type="number" label="All GPU fans %" :label-visible="true" />
-					<NcButton type="secondary" @click="askFan('set-all-speeds')">Set all</NcButton>
-					<NcButton type="tertiary" @click="askFan('set-auto')">Set auto</NcButton>
-				</div>
-				<pre class="nc-tower-pre">{{ fanStatusText }}</pre>
-			</template>
-			<NcNoteCard v-else type="warning">GPU fan control unavailable: {{ fan.reason }}</NcNoteCard>
-			<h4 class="nc-tower-subhead">Chassis fans (read only)</h4>
-			<DataTable :columns="chassisColumns" :rows="chassisFan.fans || []" empty-text="No fans detected" />
-			<p class="nc-tower-muted">Chassis PWM writes stay in Webmin → Fan Control.</p>
+			@refresh="refreshFans">
+			<FanPanel ref="fanPanel"
+				@summary="fanSummary = $event"
+				@loading="onFanLoading"
+				@error="onFanError" />
 		</Section>
 
 		<Section id="ops.engine"
@@ -260,10 +274,17 @@
 				<template #cell-actions="{ row }">
 					<div class="nc-tower-actions-cell">
 						<NcButton type="tertiary" :disabled="!row.ref" @click="askPull(row.ref)">Pull</NcButton>
+						<NcButton type="tertiary" :disabled="!row.ref" @click="askImageRemove(row.ref)">Remove</NcButton>
 					</div>
 				</template>
 			</DataTable>
 			<p v-if="imageTruncated" class="nc-tower-muted">Showing first 80 of {{ (images.images || []).length }}.</p>
+			<div class="nc-tower-toolbar">
+				<NcButton type="secondary" :disabled="jobBusy" @click="askCleanup">
+					Docker cleanup (prune)
+				</NcButton>
+			</div>
+			<JobPanel :job="job" @dismiss="job = null" />
 		</Section>
 
 		<Section id="ops.volumes"
@@ -318,15 +339,137 @@
 			title="Backup"
 			:summary="backupSummary"
 			:severity="sev.backup"
-			:loading="loading.inbox"
-			:error="errors.inbox"
-			@refresh="refresh('inbox')">
+			:loading="loading.backup || loading.inbox"
+			:error="errors.backup || errors.inbox"
+			@refresh="refreshBackup">
 			<p :class="backup.ok ? 'nc-tower-good' : 'nc-tower-warn-text'">
 				<strong>{{ backup.status || '—' }}</strong> — {{ backup.summary || '' }}
 			</p>
 			<p class="nc-tower-muted">{{ backup.name || 'no backup file' }} · {{ fmt.time(backup.mtime) }}{{ backup.stale ? ' · stale' : '' }}</p>
-			<NcButton type="secondary" @click="askBackup">Run backup now</NcButton>
-			<p class="nc-tower-muted">Deleting backups stays in Webmin → Backup Mgr.</p>
+			<p class="nc-tower-muted">
+				Inventory: {{ backupInv.count || 0 }} file(s)
+				<span v-if="backupInv.retention_days"> · retention {{ backupInv.retention_days }} d</span>
+				<span v-if="backupInv.dir"> · {{ backupInv.dir }}</span>
+			</p>
+			<DataTable :columns="backupColumns" :rows="backupInv.items || []" row-key="name" empty-text="No backup files">
+				<template #cell-size="{ row }">{{ fmt.bytes(row.size) }}</template>
+				<template #cell-mtime="{ row }">{{ fmt.time(row.mtime) }}</template>
+				<template #cell-age_hours="{ row }">{{ row.age_hours != null ? `${row.age_hours} h` : '—' }}</template>
+				<template #cell-actions="{ row }">
+					<div class="nc-tower-actions-cell">
+						<NcButton type="tertiary" @click="askBackupDelete(row.name)">Delete</NcButton>
+					</div>
+				</template>
+			</DataTable>
+			<div class="nc-tower-toolbar">
+				<NcButton type="secondary" @click="askBackup">Run backup now</NcButton>
+			</div>
+		</Section>
+
+		<Section id="ops.packages"
+			title="Packages"
+			:summary="`${(packages.packages || []).length} upgradable · ${(packages.held || []).length} held`"
+			:loading="loading.packages"
+			:error="errors.packages"
+			@refresh="refresh('packages')">
+			<DataTable :columns="packageColumns" :rows="packages.packages || []" row-key="name" empty-text="No upgradable packages">
+				<template #cell-held="{ row }">
+					<NcCheckboxRadioSwitch :checked="!!row.held" type="switch" @update:checked="(v) => setPackageHold(row.name, v)">
+						Hold
+					</NcCheckboxRadioSwitch>
+				</template>
+			</DataTable>
+			<p v-if="(packages.held || []).length" class="nc-tower-muted">Held: {{ (packages.held || []).join(', ') }}</p>
+		</Section>
+
+		<Section id="ops.cron"
+			title="Cron"
+			:summary="`${(cron.root_crontab || []).length} root entries`"
+			:loading="loading.cron"
+			:error="errors.cron"
+			@refresh="loadCron">
+			<NcNoteCard v-if="cron.error" type="warning">{{ cron.error }}</NcNoteCard>
+			<label class="nc-tower-field-label" for="ops-cron-raw">root crontab</label>
+			<textarea id="ops-cron-raw"
+				v-model="cronDraft"
+				class="nc-tower-textarea"
+				rows="10"
+				spellcheck="false" />
+			<div class="nc-tower-toolbar">
+				<NcButton type="secondary" @click="askCronSave">Save crontab</NcButton>
+			</div>
+		</Section>
+
+		<Section id="ops.host-network"
+			title="Network"
+			:summary="networkSummary"
+			:loading="loading.hostNetwork"
+			:error="errors.hostNetwork"
+			@refresh="refresh('hostNetwork')">
+			<div class="nc-tower-chips">
+				<span class="nc-tower-chip">public {{ hostNetwork.public_ip?.ip || '—' }}</span>
+				<span class="nc-tower-chip">ddclient {{ hostNetwork.ddclient?.state || (hostNetwork.ddclient?.unavailable ? 'n/a' : '—') }}</span>
+			</div>
+			<h4 class="nc-tower-subhead">ZeroTier</h4>
+			<NcNoteCard v-if="hostNetwork.zerotier?.unavailable" type="warning">{{ hostNetwork.zerotier.reason }}</NcNoteCard>
+			<DataTable v-else
+				:columns="ztColumns"
+				:rows="hostNetwork.zerotier?.networks || []"
+				empty-text="No ZeroTier networks" />
+			<h4 class="nc-tower-subhead">WireGuard peers</h4>
+			<NcNoteCard v-if="hostNetwork.wireguard?.unavailable" type="warning">{{ hostNetwork.wireguard.reason }}</NcNoteCard>
+			<DataTable v-else
+				:columns="wgColumns"
+				:rows="hostNetwork.wireguard?.peers || []"
+				empty-text="No peers" />
+			<h4 class="nc-tower-subhead">Interfaces</h4>
+			<DataTable :columns="hostIfColumns"
+				:rows="hostNetwork.interfaces?.items || []"
+				row-key="ifname"
+				empty-text="No interfaces">
+				<template #cell-addresses="{ row }">{{ fmt.addresses(row) || '—' }}</template>
+			</DataTable>
+		</Section>
+
+		<Section id="ops.ollama"
+			title="Ollama"
+			:summary="ollamaSummary"
+			:loading="loading.ollama"
+			:error="errors.ollama"
+			@refresh="refresh('ollama')">
+			<NcNoteCard v-if="ollama.unavailable" type="warning">Unavailable: {{ ollama.reason }}</NcNoteCard>
+			<template v-else>
+				<div class="nc-tower-toolbar">
+					<NcTextField :value.sync="ollamaPull" label="Model" placeholder="llama3.2:latest" />
+					<NcButton type="secondary" :disabled="!ollamaPull || jobBusy" @click="askOllamaPull">Pull</NcButton>
+				</div>
+				<JobPanel :job="ollamaJob" @dismiss="ollamaJob = null" />
+				<DataTable :columns="ollamaColumns" :rows="ollamaModelRows" row-key="name" empty-text="No models">
+					<template #cell-size="{ row }">{{ row.size != null ? fmt.bytes(row.size) : '—' }}</template>
+					<template #cell-actions="{ row }">
+						<div class="nc-tower-actions-cell">
+							<NcButton type="tertiary" @click="askOllamaDelete(row.name)">Delete</NcButton>
+						</div>
+					</template>
+				</DataTable>
+				<p v-if="(ollama.running || []).length" class="nc-tower-muted">
+					Running: {{ (ollama.running || []).map((m) => m.name || m.model).join(', ') }}
+				</p>
+			</template>
+		</Section>
+
+		<Section id="ops.audit"
+			title="Audit"
+			:summary="`${filteredAudit.length} event(s)`"
+			:loading="loading.audit"
+			:error="errors.audit"
+			@refresh="refresh('audit')">
+			<div class="nc-tower-toolbar">
+				<NcTextField :value.sync="auditFilter" label="Filter audit log" placeholder="container, backup, package…" />
+			</div>
+			<DataTable :columns="auditColumns" :rows="filteredAudit" empty-text="No audit rows">
+				<template #cell-ts="{ row }">{{ row.ts || '—' }}</template>
+			</DataTable>
 		</Section>
 
 		<Section id="ops.inbox"
@@ -380,6 +523,32 @@
 				<NcButton type="primary" :disabled="exec.busy" @click="runExec">Run</NcButton>
 			</template>
 		</NcDialog>
+
+		<NcDialog :open="rename.open" name="Rename container" size="small" @update:open="rename.open = false">
+			<p>Rename <strong>{{ rename.from }}</strong>.</p>
+			<NcTextField :value.sync="rename.to" label="New name" />
+			<template #actions>
+				<NcButton type="tertiary" @click="rename.open = false">Cancel</NcButton>
+				<NcButton type="primary" :disabled="!rename.to || rename.busy" @click="runRename">Rename</NcButton>
+			</template>
+		</NcDialog>
+
+		<NcDialog :open="recreate.open" name="Recreate container" size="normal" @update:open="recreate.open = false">
+			<p>Recreate <strong>{{ recreate.name }}</strong> with optional overrides.</p>
+			<NcCheckboxRadioSwitch :checked.sync="recreate.pull" type="switch">Pull image first</NcCheckboxRadioSwitch>
+			<NcTextField :value.sync="recreate.memory" label="Memory limit" placeholder="512m (optional)" />
+			<NcTextField :value.sync="recreate.cpus" label="CPUs" placeholder="1.5 (optional)" />
+			<NcTextField :value.sync="recreate.restart" label="Restart policy" placeholder="unless-stopped (optional)" />
+			<label class="nc-tower-field-label">Env set (KEY=value per line)</label>
+			<textarea v-model="recreate.envSet" class="nc-tower-textarea" rows="4" spellcheck="false" />
+			<label class="nc-tower-field-label">Env unset (KEY per line)</label>
+			<textarea v-model="recreate.envUnset" class="nc-tower-textarea" rows="3" spellcheck="false" />
+			<p class="nc-tower-muted">Type RECREATE in the confirm dialog after Apply.</p>
+			<template #actions>
+				<NcButton type="tertiary" @click="recreate.open = false">Cancel</NcButton>
+				<NcButton type="error" @click="confirmRecreate">Apply…</NcButton>
+			</template>
+		</NcDialog>
 	</div>
 </template>
 
@@ -397,6 +566,8 @@ import AttentionList from '../components/AttentionList.vue'
 import NcTowerIcon from '../components/NcTowerIcon.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import DataTable from '../components/DataTable.vue'
+import FanPanel from '../components/FanPanel.vue'
+import JobPanel from '../components/JobPanel.vue'
 import Sparkline from '../components/Sparkline.vue'
 import TowerChart from '../components/TowerChart.vue'
 import OutputDialog from '../components/OutputDialog.vue'
@@ -407,6 +578,7 @@ import UsageBar from '../components/UsageBar.vue'
 import { get, post } from '../services/api.js'
 import fmt from '../services/format.js'
 import { assess, worst } from '../services/health.js'
+import { runJob } from '../services/jobs.js'
 import Poller from '../services/poll.js'
 
 const LOCKED_HINT = 'Widen NC_TOWER_CONTAINER_LOG_ALLOW for read-only logs without granting mutate rights.'
@@ -414,7 +586,7 @@ const LOCKED_HINT = 'Widen NC_TOWER_CONTAINER_LOG_ALLOW for read-only logs witho
 export default {
 	name: 'Ops',
 	components: {
-		AttentionList, ConfirmDialog, DataTable, NcTowerIcon, OutputDialog, Section, Sparkline,
+		AttentionList, ConfirmDialog, DataTable, FanPanel, JobPanel, NcTowerIcon, OutputDialog, Section, Sparkline,
 		StatusBanner, TowerChart, UsageBar,
 		NcActionButton, NcActions, NcButton, NcCheckboxRadioSwitch, NcDialog, NcNoteCard, NcTextField,
 	},
@@ -427,7 +599,6 @@ export default {
 			df: {},
 			gpu: {},
 			smart: {},
-			fan: {},
 			chassisFan: {},
 			containers: {},
 			stacks: {},
@@ -437,15 +608,28 @@ export default {
 			events: {},
 			inbox: {},
 			packages: {},
+			cron: {},
+			cronDraft: '',
+			backupInv: {},
+			hostNetwork: {},
+			ollama: {},
+			audit: {},
 			system: {},
 			appUpdates: {},
 			showProbes: false,
 			trends: {},
+			statsOpen: {},
+			smartAttrs: {},
 			loading: {},
 			errors: {},
 			containerFilter: '',
 			pullRef: '',
-			fanSpeed: '40',
+			auditFilter: '',
+			ollamaPull: '',
+			fanSummary: '',
+			job: null,
+			ollamaJob: null,
+			jobBusy: false,
 			refreshingAll: false,
 			updatedAt: '',
 			logFollow: false,
@@ -454,6 +638,11 @@ export default {
 			pendingAction: null,
 			output: { open: false, title: '', text: '', kind: '', follow: false, name: '' },
 			exec: { open: false, name: '', raw: '["ls","-la"]', out: '', busy: false },
+			rename: { open: false, from: '', to: '', busy: false },
+			recreate: {
+				open: false, name: '', pull: false, memory: '', cpus: '', restart: '',
+				envSet: '', envUnset: '',
+			},
 			containerColumns: [
 				{ key: 'name', label: 'Name' },
 				{ key: 'project', label: 'Project' },
@@ -482,6 +671,15 @@ export default {
 				{ key: 'model', label: 'Model' },
 				{ key: 'temp_c', label: 'Temp', align: 'end' },
 				{ key: 'power_on_hours', label: 'Powered on', align: 'end' },
+				{ key: 'actions', label: '', align: 'end', sortable: false },
+			],
+			smartAttrColumns: [
+				{ key: 'id', label: 'ID', align: 'end' },
+				{ key: 'name', label: 'Name' },
+				{ key: 'value', label: 'Value', align: 'end' },
+				{ key: 'worst', label: 'Worst', align: 'end' },
+				{ key: 'thresh', label: 'Thresh', align: 'end' },
+				{ key: 'raw', label: 'Raw' },
 			],
 			nasColumns: [
 				{ key: 'path', label: 'Mount' },
@@ -501,12 +699,6 @@ export default {
 				{ key: 'pid', label: 'PID' },
 				{ key: 'process_name', label: 'Process' },
 				{ key: 'used_memory_mib', label: 'Memory', align: 'end' },
-			],
-			chassisColumns: [
-				{ key: 'name', label: 'Fan' },
-				{ key: 'rpm', label: 'RPM', align: 'end' },
-				{ key: 'pwm', label: 'PWM', align: 'end' },
-				{ key: 'chip', label: 'Chip' },
 			],
 			dfColumns: [
 				{ key: 'Type', label: 'Type' },
@@ -547,6 +739,46 @@ export default {
 				{ key: 'detail', label: 'Detail' },
 				{ key: 'mtime', label: 'When' },
 			],
+			backupColumns: [
+				{ key: 'name', label: 'File' },
+				{ key: 'size', label: 'Size', align: 'end' },
+				{ key: 'mtime', label: 'Modified' },
+				{ key: 'age_hours', label: 'Age', align: 'end' },
+				{ key: 'actions', label: '', align: 'end', sortable: false },
+			],
+			packageColumns: [
+				{ key: 'name', label: 'Package' },
+				{ key: 'old_version', label: 'Installed' },
+				{ key: 'new_version', label: 'Available' },
+				{ key: 'held', label: 'Hold', sortable: false },
+			],
+			ztColumns: [
+				{ key: 'name', label: 'Name' },
+				{ key: 'id', label: 'Network ID', mono: true },
+				{ key: 'status', label: 'Status' },
+				{ key: 'type', label: 'Type' },
+			],
+			wgColumns: [
+				{ key: 'public_key', label: 'Peer', mono: true },
+				{ key: 'endpoint', label: 'Endpoint' },
+				{ key: 'allowed_ips', label: 'Allowed IPs' },
+				{ key: 'latest_handshake', label: 'Handshake' },
+			],
+			hostIfColumns: [
+				{ key: 'name', label: 'Interface' },
+				{ key: 'state', label: 'State' },
+				{ key: 'addresses', label: 'Addresses' },
+			],
+			ollamaColumns: [
+				{ key: 'name', label: 'Model' },
+				{ key: 'size', label: 'Size', align: 'end' },
+				{ key: 'digest', label: 'Digest', mono: true },
+				{ key: 'actions', label: '', align: 'end', sortable: false },
+			],
+			auditColumns: [
+				{ key: 'ts', label: 'When' },
+				{ key: 'line', label: 'Event' },
+			],
 		}
 	},
 	computed: {
@@ -560,6 +792,8 @@ export default {
 				packages: this.packages,
 				system: this.system,
 				updates: this.appUpdates,
+				chassisFan: this.chassisFan,
+				backup: this.backupInv,
 			})
 		},
 		sev() {
@@ -574,6 +808,7 @@ export default {
 				inbox: bySection('inbox'),
 				system: bySection('system'),
 				backup: bySection('backup'),
+				fans: bySection('fans'),
 			}
 		},
 		facts() {
@@ -629,9 +864,6 @@ export default {
 			const gpus = this.gpu.gpus || []
 			return gpus.length ? gpus.map((g) => `${g.name} ${g.temp_c}°C`).join(', ') : ''
 		},
-		fanSummary() {
-			return this.fan.unavailable ? 'GPU fan control unavailable' : `${(this.chassisFan.fans || []).length} chassis fan(s)`
-		},
 		engine() {
 			return this.engineRaw.info || {}
 		},
@@ -642,7 +874,9 @@ export default {
 			return this.inbox.backup || {}
 		},
 		backupSummary() {
-			return this.backup.status ? `${this.backup.status}${this.backup.stale ? ' · stale' : ''}` : ''
+			const status = this.backup.status ? `${this.backup.status}${this.backup.stale ? ' · stale' : ''}` : ''
+			const inv = this.backupInv.count != null ? `${this.backupInv.count} file(s)` : ''
+			return [status, inv].filter(Boolean).join(' · ')
 		},
 		eventSummary() {
 			const shown = (this.events.events || []).length
@@ -658,8 +892,32 @@ export default {
 				.map((iface) => `${iface.name || ''} ${fmt.addresses(iface)}`.trim())
 				.filter(Boolean).join(' · ')
 		},
-		fanStatusText() {
-			return JSON.stringify(this.fan.status ?? this.fan, null, 2).slice(0, 1500)
+		networkSummary() {
+			const zt = (this.hostNetwork.zerotier?.networks || []).length
+			const wg = (this.hostNetwork.wireguard?.peers || []).length
+			const ip = this.hostNetwork.public_ip?.ip
+			return [ip ? `public ${ip}` : '', zt ? `${zt} ZT` : '', wg ? `${wg} WG peer(s)` : ''].filter(Boolean).join(' · ')
+		},
+		ollamaSummary() {
+			if (this.ollama.unavailable) {
+				return 'unavailable'
+			}
+			return `${(this.ollama.models || []).length} model(s)`
+		},
+		ollamaModelRows() {
+			return (this.ollama.models || []).map((model) => ({
+				name: model.name || model.model || '',
+				size: model.size,
+				digest: String(model.digest || '').slice(0, 16),
+			}))
+		},
+		filteredAudit() {
+			const rows = this.audit.rows || []
+			const query = this.auditFilter.trim().toLowerCase()
+			if (!query) {
+				return rows.slice().reverse()
+			}
+			return rows.filter((row) => String(row.line || '').toLowerCase().includes(query)).reverse()
 		},
 		stackRows() {
 			return this.stacks.stacks || []
@@ -753,15 +1011,18 @@ export default {
 			this.fetch('engineRaw', '/tower/docker/info', null, 'engine'),
 			this.fetch('df', '/tower/docker/df', null, 'engine'),
 		]), 60000)
-		p.add('fan', () => Promise.all([
-			this.fetch('fan', '/tower/fan'),
-			this.fetch('chassisFan', '/tower/chassis-fan', null, 'fan'),
-		]), 60000)
+		// Fans: FanPanel self-fetches; Ops also keeps chassisFan for assess().
+		p.add('chassisFan', () => this.fetch('chassisFan', '/tower/chassis-fan'), 60000)
 		p.add('inbox', () => this.fetch('inbox', '/tower/ops-inbox'), 60000)
+		p.add('backup', () => this.fetch('backupInv', '/tower/backup', null, 'backup'), 120000)
 		p.add('stacks', () => this.fetch('stacks', '/tower/stacks'), 60000)
 		p.add('images', () => this.fetch('images', '/tower/docker/images'), 120000)
 		p.add('volumes', () => this.fetch('volumes', '/tower/docker/volumes'), 120000)
 		p.add('networks', () => this.fetch('networks', '/tower/docker/networks'), 120000)
+		p.add('hostNetwork', () => this.fetch('hostNetwork', '/tower/network'), 120000)
+		p.add('ollama', () => this.fetch('ollama', '/tower/ollama'), 120000)
+		p.add('audit', () => this.fetch('audit', '/tower/audit', { limit: 200 }), 120000)
+		p.add('cron', () => this.loadCron(), 300000)
 		// smartctl walks every physical disk; 1.8 ran this every 12 s.
 		p.add('smart', () => this.fetch('smart', '/tower/smart'), 300000)
 		p.add('packages', () => this.fetch('packages', '/tower/packages'), 300000)
@@ -780,7 +1041,37 @@ export default {
 		 * @return {Promise<void>} resolves once the loaders settle
 		 */
 		refresh(name) {
+			if (name === 'fan') {
+				return this.refreshFans()
+			}
 			return this.poller.refresh(name)
+		},
+		refreshFans() {
+			return this.$refs.fanPanel?.refresh?.() || Promise.resolve()
+		},
+		onFanLoading(value) {
+			this.$set(this.loading, 'fan', !!value)
+		},
+		onFanError(message) {
+			this.$set(this.errors, 'fan', message || '')
+		},
+		refreshBackup() {
+			return Promise.all([
+				this.poller.refresh('inbox'),
+				this.poller.refresh('backup'),
+			])
+		},
+		async loadCron() {
+			this.$set(this.loading, 'cron', true)
+			try {
+				this.cron = await get('/tower/cron')
+				this.cronDraft = this.cron.root_crontab_raw || ''
+				this.$set(this.errors, 'cron', '')
+			} catch (error) {
+				this.$set(this.errors, 'cron', error.message)
+			} finally {
+				this.$set(this.loading, 'cron', false)
+			}
 		},
 		recordTrends(rows) {
 			const next = { ...this.trends }
@@ -812,20 +1103,23 @@ export default {
 		async refreshAll() {
 			this.refreshingAll = true
 			try {
-				await this.poller.refresh()
+				await Promise.all([
+					this.poller.refresh(),
+					this.refreshFans(),
+				])
 			} finally {
 				this.refreshingAll = false
 			}
 		},
 
 		ask(action, name) {
-			const danger = ['kill', 'recreate', 'stop'].includes(action)
+			const danger = ['kill', 'stop'].includes(action)
 			this.confirm = {
 				open: true,
 				title: `${action[0].toUpperCase()}${action.slice(1)} container`,
 				message: `${action} ${name}?`,
 				confirmLabel: action,
-				phrase: action === 'recreate' ? 'RECREATE' : '',
+				phrase: '',
 				danger,
 			}
 			this.pendingAction = () => this.runContainer(action, name)
@@ -853,16 +1147,31 @@ export default {
 			}
 			this.pendingAction = () => this.runPull(image)
 		},
-		askFan(op) {
+		askImageRemove(ref) {
 			this.confirm = {
 				open: true,
-				title: 'GPU fans',
-				message: op === 'set-auto' ? 'Hand GPU fans back to automatic control?' : `Set all GPU fans to ${this.fanSpeed}%?`,
-				confirmLabel: 'Apply',
-				phrase: '',
-				danger: false,
+				title: 'Remove image',
+				message: `Remove image ${ref}? Blocked if any container still references it.`,
+				confirmLabel: 'Remove',
+				phrase: 'REMOVE',
+				danger: true,
 			}
-			this.pendingAction = () => this.runFan(op)
+			this.pendingAction = () => this.mutate(
+				post('/tower/docker/images/remove', { ref }),
+				`Removed ${ref}`,
+				() => this.poller.refresh('images'),
+			)
+		},
+		askCleanup() {
+			this.confirm = {
+				open: true,
+				title: 'Docker cleanup',
+				message: 'Run the allowlisted docker-cleanup prune job on the host?',
+				confirmLabel: 'Prune',
+				phrase: 'PRUNE',
+				danger: true,
+			}
+			this.pendingAction = () => this.startJob('docker-cleanup', {}, 'job')
 		},
 		askBackup() {
 			this.confirm = {
@@ -874,6 +1183,66 @@ export default {
 				danger: false,
 			}
 			this.pendingAction = () => this.runBackup()
+		},
+		askBackupDelete(name) {
+			this.confirm = {
+				open: true,
+				title: 'Delete backup',
+				message: `Permanently delete ${name}?`,
+				confirmLabel: 'Delete',
+				phrase: 'DELETE',
+				danger: true,
+			}
+			this.pendingAction = () => this.mutate(
+				post('/tower/backup/delete', { file: name }),
+				`Deleted ${name}`,
+				() => this.poller.refresh('backup'),
+			)
+		},
+		askCronSave() {
+			this.confirm = {
+				open: true,
+				title: 'Save root crontab',
+				message: 'Replace the root crontab with the edited text? A backup is kept under /ops/state/cron-backups.',
+				confirmLabel: 'Save',
+				phrase: 'CRON',
+				danger: true,
+			}
+			this.pendingAction = () => this.mutate(
+				post('/tower/cron', { crontab: this.cronDraft }),
+				'Crontab saved',
+				() => this.loadCron(),
+			)
+		},
+		askOllamaPull() {
+			const model = this.ollamaPull.trim()
+			if (!model) {
+				return
+			}
+			this.confirm = {
+				open: true,
+				title: 'Pull Ollama model',
+				message: `Pull ${model}?`,
+				confirmLabel: 'Pull',
+				phrase: '',
+				danger: false,
+			}
+			this.pendingAction = () => this.startJob('ollama-pull', { model }, 'ollamaJob')
+		},
+		askOllamaDelete(model) {
+			this.confirm = {
+				open: true,
+				title: 'Delete Ollama model',
+				message: `Delete model ${model}?`,
+				confirmLabel: 'Delete',
+				phrase: 'DELETE',
+				danger: true,
+			}
+			this.pendingAction = () => this.mutate(
+				post('/tower/ollama/models', { op: 'delete', model }),
+				`Deleted ${model}`,
+				() => this.poller.refresh('ollama'),
+			)
 		},
 		async runConfirmed() {
 			const action = this.pendingAction
@@ -889,6 +1258,8 @@ export default {
 				const result = await promise
 				if (result && result.ok === true) {
 					showSuccess(okMessage)
+				} else if (result && result.id) {
+					showSuccess(okMessage)
 				} else {
 					showError(result?.error || result?.stderr || 'Action failed')
 				}
@@ -897,6 +1268,32 @@ export default {
 			} finally {
 				if (after) {
 					await after()
+				}
+			}
+		},
+		async startJob(kind, body, slot) {
+			this.jobBusy = true
+			this[slot] = { id: '', kind, status: 'running', log: '' }
+			try {
+				const job = await runJob(kind, body || {}, (tick) => {
+					this[slot] = tick
+				})
+				this[slot] = job
+				if (job.status === 'done') {
+					showSuccess(`${kind} finished`)
+				} else {
+					showError(`${kind} failed (exit ${job.exit})`)
+				}
+			} catch (error) {
+				showError(error.message)
+			} finally {
+				this.jobBusy = false
+				if (kind === 'ollama-pull') {
+					await this.poller.refresh('ollama')
+				}
+				if (kind === 'docker-cleanup') {
+					await this.poller.refresh('images')
+					await this.poller.refresh('engine')
 				}
 			}
 		},
@@ -913,12 +1310,113 @@ export default {
 		runPull(image) {
 			return this.mutate(post('/tower/docker/images/pull', { image }), `Pulled ${image}`, () => this.poller.refresh('images'))
 		},
-		runFan(op) {
-			const body = op === 'set-auto' ? { op } : { op, speed: Number(this.fanSpeed) }
-			return this.mutate(post('/tower/fan', body), 'Fan setting applied', () => this.poller.refresh('fan'))
-		},
 		runBackup() {
-			return this.mutate(post('/tower/backup/run', {}), 'Backup finished', () => this.poller.refresh('inbox'))
+			return this.mutate(post('/tower/backup/run', {}), 'Backup finished', () => this.refreshBackup())
+		},
+		async setPackageHold(name, hold) {
+			await this.mutate(
+				post('/tower/packages/hold', { package: name, hold: !!hold }),
+				hold ? `Holding ${name}` : `Unheld ${name}`,
+				() => this.poller.refresh('packages'),
+			)
+		},
+
+		async toggleStats(name) {
+			if (this.statsOpen[name]) {
+				this.$delete(this.statsOpen, name)
+				return
+			}
+			this.$set(this.statsOpen, name, 'Loading…')
+			try {
+				const data = await get(`/tower/containers/${encodeURIComponent(name)}/stats`)
+				this.$set(this.statsOpen, name, JSON.stringify(data.stats || data, null, 2))
+			} catch (error) {
+				this.$set(this.statsOpen, name, error.message)
+			}
+		},
+		async toggleSmartAttrs(device) {
+			if (this.smartAttrs[device]) {
+				this.$delete(this.smartAttrs, device)
+				return
+			}
+			this.$set(this.smartAttrs, device, [])
+			try {
+				const data = await get('/tower/smart/attributes', { dev: device })
+				this.$set(this.smartAttrs, device, data.attributes || [])
+			} catch (error) {
+				showError(error.message)
+				this.$delete(this.smartAttrs, device)
+			}
+		},
+
+		openRename(name) {
+			this.rename = { open: true, from: name, to: name, busy: false }
+		},
+		async runRename() {
+			this.rename.busy = true
+			try {
+				await this.mutate(
+					post(`/tower/containers/${encodeURIComponent(this.rename.from)}/rename`, { name: this.rename.to }),
+					`Renamed to ${this.rename.to}`,
+					() => this.poller.refresh('containers'),
+				)
+				this.rename.open = false
+			} finally {
+				this.rename.busy = false
+			}
+		},
+		openRecreate(name) {
+			this.recreate = {
+				open: true, name, pull: false, memory: '', cpus: '', restart: '',
+				envSet: '', envUnset: '',
+			}
+		},
+		confirmRecreate() {
+			this.recreate.open = false
+			const body = this.buildRecreateBody()
+			this.confirm = {
+				open: true,
+				title: 'Recreate container',
+				message: `Recreate ${this.recreate.name} with the chosen overrides?`,
+				confirmLabel: 'Recreate',
+				phrase: 'RECREATE',
+				danger: true,
+			}
+			this.pendingAction = () => this.mutate(
+				post(`/tower/containers/${encodeURIComponent(this.recreate.name)}/recreate`, body),
+				`${this.recreate.name}: recreate done`,
+				() => this.poller.refresh('containers'),
+			)
+		},
+		buildRecreateBody() {
+			const body = { pull: !!this.recreate.pull }
+			const envSet = {}
+			for (const line of String(this.recreate.envSet || '').split('\n')) {
+				const trimmed = line.trim()
+				if (!trimmed || !trimmed.includes('=')) {
+					continue
+				}
+				const idx = trimmed.indexOf('=')
+				envSet[trimmed.slice(0, idx)] = trimmed.slice(idx + 1)
+			}
+			const envUnset = String(this.recreate.envUnset || '').split('\n')
+				.map((line) => line.trim()).filter(Boolean)
+			if (Object.keys(envSet).length) {
+				body.env_set = envSet
+			}
+			if (envUnset.length) {
+				body.env_unset = envUnset
+			}
+			if (this.recreate.memory.trim()) {
+				body.memory = this.recreate.memory.trim()
+			}
+			if (this.recreate.cpus.trim()) {
+				body.cpus = this.recreate.cpus.trim()
+			}
+			if (this.recreate.restart.trim()) {
+				body.restart_policy = this.recreate.restart.trim()
+			}
+			return body
 		},
 
 		async openLogs(name) {
@@ -1033,6 +1531,33 @@ export default {
 	margin: 16px 0 6px;
 	font-size: 0.95em;
 	color: var(--color-text-maxcontrast);
+}
+
+.nc-tower-field-label {
+	display: block;
+	margin: 10px 0 4px;
+	font-size: 0.85em;
+	color: var(--color-text-maxcontrast);
+}
+
+.nc-tower-textarea {
+	width: 100%;
+	max-width: 720px;
+	font-family: var(--font-face-monospace, monospace);
+	font-size: 0.82em;
+	padding: 8px;
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius, 4px);
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	resize: vertical;
+}
+
+.nc-tower-stats-panel {
+	margin: 10px 0;
+	padding: 8px 10px;
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius-large, 8px);
 }
 
 .nc-tower-pre {

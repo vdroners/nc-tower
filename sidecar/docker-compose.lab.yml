@@ -36,6 +36,8 @@ services:
       LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu
     volumes:
       - ./app.py:/app/app.py:ro
+      - ./chassis_fan.py:/app/chassis_fan.py:ro
+      - ./parity.py:/app/parity.py:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker:ro
       - /usr/libexec/docker/cli-plugins:/usr/libexec/docker/cli-plugins:ro

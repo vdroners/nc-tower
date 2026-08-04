@@ -6,21 +6,18 @@
 <summary>Nextcloud orchestrator for admin, stacks, host health, and ops inbox</summary>
 <description><![CDATA[**NC Tower** is a Nextcloud admin orchestrator — users, apps, system info, and an optional host sidecar for Docker/day-ops.
 
-Fork of [Admin Cockpit](https://github.com/zomtec2311/admincockpit) by Wolfgang Tödt (AGPL-3.0), rebranded and extended.
-
 ### Features
 - Unified admin pages (users, apps, system) via public Nextcloud APIs
 - Optional allowlisted host sidecar for container/stack health and ops inbox
-- Configurable deep links (Portainer, Webmin, monitoring UIs, …) — empty by default
-- Webmin / Portainer remain break-glass when you configure their URLs
+- Chassis fan control with profiles and history charts, SMART detail, backups, network/VPN status, Ollama manager
+- Configurable deep links (monitoring UIs, …) — empty by default; Webmin/Portainer optional
 
 ### Privacy / sidecar
 The Nextcloud app itself does not require the sidecar. The sidecar is an **optional privileged host agent** (Docker socket + allowlisted host tools). Administrators configure its URL and token; stock defaults use Docker DNS (`http://nc_tower_sidecar:18765`) and do not embed lab IPs. See [docs/PRIVACY.md](https://github.com/vdroners/nc-tower/blob/main/docs/PRIVACY.md).
 
-See CREDITS.md for attribution.]]></description>
-<version>1.13.0</version>
+Originally derived from Admin Cockpit (AGPL-3.0) — see CREDITS.md.]]></description>
+<version>1.14.0</version>
 <licence>AGPL-3.0-or-later</licence>
-<author mail="wtoedt@gmail.com" homepage="https://github.com/zomtec2311/admincockpit">Wolfgang Tödt</author>
 <author mail="dan@19labs.com" homepage="https://github.com/vdroners/nc-tower">Sarge</author>
 <namespace>NcTower</namespace>
 <documentation>

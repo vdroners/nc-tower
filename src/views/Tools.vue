@@ -72,14 +72,16 @@ const ABSORBED = [
 	['Docker', 'Ops › Containers', 'webmin'],
 	['Docker Stacks', 'Ops › Stacks', 'webmin'],
 	['NVIDIA GPU', 'Ops › GPU', 'webmin'],
+	['SMART Health', 'Ops › SMART and NAS', 'webmin'],
+	['Backup Mgr', 'Ops › Backup', 'webmin'],
+	['Fan Control (chassis PWM)', 'Ops › Fans', 'webmin'],
+	['Network/VPN', 'Ops › Network', 'webmin'],
+	['Ollama Manager', 'Ops › Ollama', ''],
 ]
 
 const BREAK_GLASS = [
-	{ title: 'Webmin', key: 'webmin', gap: 'chassis PWM writes, cron edits, package pinning' },
-	{ title: 'Portainer', key: 'portainer', gap: 'env and resource editors, rename, prune' },
-	{ title: 'SMART Health', key: 'webmin', gap: 'per-attribute detail' },
-	{ title: 'Backup Mgr', key: 'webmin', gap: 'delete and restore — run and status are in Tower' },
-	{ title: 'Fan Control (chassis PWM)', key: 'webmin', gap: 'PWM writes — GPU fans are in Tower' },
+	{ title: 'Webmin', key: 'webmin', note: 'Optional — Tower has parity; kept as second opinion' },
+	{ title: 'Portainer', key: 'portainer', note: 'Optional — Tower has parity; kept as second opinion' },
 ]
 
 const APPS = [
@@ -110,9 +112,9 @@ export default {
 				{
 					title: 'Absorbed into NC Tower',
 					blurb: 'Tower does these now. The links remain only as a second opinion.',
-					rows: filterConfigured(ABSORBED.map(([title, where, key]) => ({
+					rows: ABSORBED.map(([title, where, key]) => ({
 						title, url: urlOf(title), supersededBy: where, probe: probe(key),
-					}))),
+					})).filter((row) => row.url || row.supersededBy),
 				},
 				{
 					title: 'Break-glass — still needed',

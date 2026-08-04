@@ -1,13 +1,13 @@
 # NC Tower
 
-**Version 1.13.0**
+**Version 1.14.0**
 
 NC Tower is the Nextcloud orchestrator for this GCS host: Nextcloud admin, Docker
 day-ops, host health and the ops inbox in one place, so routine work does not need
 Portainer, Webmin or an SSH session.
 
-> **Fork of [Admin Cockpit](https://github.com/zomtec2311/admincockpit)** by Wolfgang Tödt — rebranded and extended. See [CREDITS.md](CREDITS.md).
-
+Maintained by **Sarge** / **vdroners** (19labs). AGPL-3.0-or-later — see [LICENSE](LICENSE)
+and [CREDITS.md](CREDITS.md) for heritage.
 ## Architecture
 
 Everything else follows from this shape, so read it first:
@@ -33,7 +33,7 @@ one ever appears.
 | Tab | What it gives you |
 |---|---|
 | **Home** | Health verdict for the host plus a tile per area |
-| **Ops** | Verdict banner and attention list first; then containers, stacks, host and disks, SMART, GPU, fans, engine, images, volumes, networks, events, backup, ops inbox |
+| **Ops** | Verdict banner and attention list first; then containers, stacks, host and disks, SMART, GPU, fans (profiles + charts), engine, images, volumes, networks, host network/VPN, Ollama, audit, cron, backup, ops inbox |
 | **Host** | Mounts, package updates, top processes, systemd (allowlisted restart), cron, network |
 | **Apps** · **System** · **Users** | Nextcloud administration, rebuilt in Vue |
 | **Tools** | Deep links to Portainer, Webmin, Kuma, Caddy, Guacamole, WebODM, OrcaSlicer, ADSB, MediaMTX (configure URLs in Settings → NC Tower; empty = hidden) |
@@ -181,19 +181,12 @@ Changes big enough to need a plan get one checked into `docs/plans/` first;
 recent. See also [docs/CAPABILITY_MATRIX.md](docs/CAPABILITY_MATRIX.md) for what is
 deliberately in, deep-linked, or refused.
 
-## Attribution / fork lineage
+## Heritage
 
-| | |
-|---|---|
-| Upstream | [zomtec2311/admincockpit](https://github.com/zomtec2311/admincockpit) (Admin Cockpit) |
-| Baseline | v1.3.2 |
-| This repo | [vdroners/nc-tower](https://github.com/vdroners/nc-tower) |
-| License | [AGPL-3.0](LICENSE) |
-
-Git remotes: `origin` → vdroners/nc-tower, `upstream` → zomtec2311/admincockpit.
-
-The four Admin Cockpit page bundles were removed in 1.9.0 and their pages reimplemented in
-Vue against the same PHP endpoints, so those views no longer track upstream.
+NC Tower began as a derivation of Admin Cockpit (AGPL-3.0, baseline 1.3.2). The
+Ops/Tools/sidecar/widget surfaces are original work for this estate. Attribution
+and the upstream URL live only in [CREDITS.md](CREDITS.md). License remains
+[AGPL-3.0](LICENSE).
 
 ## License
 

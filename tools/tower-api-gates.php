@@ -138,6 +138,82 @@ gate('G17', 'matrix Portainer section', str_contains($matrix, 'Portainer'));
 $widget = @file_get_contents("$remote/lib/Dashboard/NcTowerWidget.php") ?: '';
 gate('G18', 'widget title NC Tower', str_contains($widget, 'NC Tower'));
 
+// --- G28 1.14.0 Webmin/Portainer parity --------------------------------------
+foreach ([
+	'tower#chassisFanSet', 'tower#hostChassisFanHistory', 'tower#containerRename',
+	'tower#imageRemove', 'tower#packageHold', 'tower#cronSave', 'tower#backupDelete',
+	'tower#hostNetwork', 'tower#hostOllama', 'tower#opsAudit', 'tower#containerStats',
+] as $route) {
+	gate('G28', "route $route", str_contains($routes, $route));
+}
+gate('G28', 'job kinds include docker-cleanup', str_contains($routes, 'docker-cleanup'));
+gate('G28', 'sidecar chassis fan module present', is_file("$remote/sidecar/chassis_fan.py"));
+gate('G28', 'sidecar parity module present', is_file("$remote/sidecar/parity.py"));
+gate('G28', 'sidecar chassis-fan POST', str_contains($sidecar, '/host/chassis-fan'));
+gate('G28', 'sidecar mode 0 forbidden', str_contains(@file_get_contents("$remote/sidecar/chassis_fan.py") ?: '', 'mode_0_forbidden')
+	|| str_contains(@file_get_contents("$remote/sidecar/chassis_fan.py") ?: '', 'mode == 0'));
+gate('G28', 'sidecar docker-cleanup job kind', str_contains($sidecar, 'docker-cleanup'));
+gate('G28', 'sidecar still has no prune route token', !str_contains($routes, 'prune'));
+gate('G28', 'sidecar still has no system/volume prune strings', !str_contains($sidecar, 'system prune') && !str_contains($sidecar, 'volume prune'));
+gate('G28', 'capabilities advertised on health', str_contains($sidecar, 'CAPABILITIES') || str_contains($sidecar, 'capabilities'));
+gate('G28', 'cron backups dir used', str_contains($sidecar, 'cron-backups'));
+
+// --- G29 provenance scrub (Admin Cockpit names only in allowed files) -------
+$allowedHitFiles = [
+	'CREDITS.md' => true,
+	'CHANGELOG.md' => true,
+	'LICENSE' => true,
+];
+$hits = [];
+$scanRoots = [
+	"$remote/appinfo",
+	"$remote/lib",
+	"$remote/src",
+	"$remote/tools",
+	"$remote/sidecar",
+];
+foreach ($scanRoots as $dir) {
+	if (!is_dir($dir)) {
+		continue;
+	}
+	$it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
+	foreach ($it as $file) {
+		/** @var SplFileInfo $file */
+		if (!$file->isFile()) {
+			continue;
+		}
+		$ext = strtolower($file->getExtension());
+		if (!in_array($ext, ['php', 'py', 'js', 'vue', 'xml', 'md', 'json'], true)) {
+			continue;
+		}
+		$rel = substr($file->getPathname(), strlen($remote) + 1);
+		if (str_starts_with($rel, 'docs/plans/')) {
+			continue;
+		}
+		if (isset($allowedHitFiles[basename($rel)]) && in_array(basename($rel), ['CREDITS.md', 'CHANGELOG.md', 'LICENSE'], true)
+			&& !str_contains($rel, '/')) {
+			// top-level allowlist handled below via full-tree check of specific names
+		}
+		$body = @file_get_contents($file->getPathname()) ?: '';
+		if (preg_match('/admincockpit|zomtec|toedt|tödt/i', $body)) {
+			$base = basename($rel);
+			if (in_array($base, ['CREDITS.md', 'CHANGELOG.md', 'LICENSE', 'tower-api-gates.php'], true)) {
+				continue;
+			}
+			$hits[] = $rel;
+		}
+	}
+}
+// Also scan README at remote root
+$readme = @file_get_contents("$remote/README.md") ?: '';
+if (preg_match('/admincockpit|zomtec2311/i', $readme) && !str_contains(strtolower($readme), 'heritage')) {
+	// Heritage section may mention Admin Cockpit by name — allowed if CREDITS linked.
+	if (!str_contains($readme, 'CREDITS.md')) {
+		$hits[] = 'README.md';
+	}
+}
+gate('G29', 'no Admin Cockpit branding outside CREDITS/CHANGELOG/LICENSE/plans' . ($hits ? ' (' . implode(', ', array_slice($hits, 0, 8)) . ')' : ''), $hits === []);
+
 $owner = posix_getpwuid(@fileowner($remote) ?: 0);
 $ownerName = $owner['name'] ?? '';
 gate('G08', 'tree owned by www-data (or root after cp before chown)', in_array($ownerName, ['www-data', 'root'], true));

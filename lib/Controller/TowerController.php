@@ -134,6 +134,12 @@ class TowerController extends Controller {
 	}
 
 	#[NoCSRFRequired]
+	public function hostSmartAttributes(): DataResponse {
+		$dev = (string) $this->request->getParam('dev', $this->request->getParam('device', ''));
+		return $this->getJson('/host/smart/attributes?dev=' . rawurlencode($dev), 60);
+	}
+
+	#[NoCSRFRequired]
 	public function hostFan(): DataResponse {
 		return $this->getJson('/host/fan');
 	}
@@ -141,6 +147,13 @@ class TowerController extends Controller {
 	#[NoCSRFRequired]
 	public function hostChassisFan(): DataResponse {
 		return $this->getJson('/host/chassis-fan');
+	}
+
+	#[NoCSRFRequired]
+	public function hostChassisFanHistory(): DataResponse {
+		$minutes = (int) $this->request->getParam('minutes', '60');
+		$minutes = max(1, min($minutes, 1440));
+		return $this->getJson('/host/chassis-fan/history?minutes=' . $minutes, 30);
 	}
 
 	#[NoCSRFRequired]
@@ -161,6 +174,16 @@ class TowerController extends Controller {
 	#[NoCSRFRequired]
 	public function hostNet(): DataResponse {
 		return $this->getJson('/host/net');
+	}
+
+	#[NoCSRFRequired]
+	public function hostNetwork(): DataResponse {
+		return $this->getJson('/host/network', 40);
+	}
+
+	#[NoCSRFRequired]
+	public function hostOllama(): DataResponse {
+		return $this->getJson('/host/ollama', 30);
 	}
 
 	#[NoCSRFRequired]
@@ -193,6 +216,11 @@ class TowerController extends Controller {
 	#[NoCSRFRequired]
 	public function containerInspect(string $name): DataResponse {
 		return $this->getJson('/containers/' . rawurlencode($name) . '/inspect');
+	}
+
+	#[NoCSRFRequired]
+	public function containerStats(string $name): DataResponse {
+		return $this->getJson('/containers/' . rawurlencode($name) . '/stats', 30);
 	}
 
 	#[NoCSRFRequired]
@@ -250,6 +278,18 @@ class TowerController extends Controller {
 		return $this->getJson('/ops/inbox-summary');
 	}
 
+	#[NoCSRFRequired]
+	public function opsAudit(): DataResponse {
+		$limit = (int) $this->request->getParam('limit', '200');
+		$limit = max(1, min($limit, 2000));
+		return $this->getJson('/ops/audit?limit=' . $limit, 30);
+	}
+
+	#[NoCSRFRequired]
+	public function backupInventory(): DataResponse {
+		return $this->getJson('/ops/backup', 40);
+	}
+
 	/** CSRF required — mutator */
 	public function containerAction(string $name, string $action): DataResponse {
 		$action = strtolower($action);
@@ -262,15 +302,29 @@ class TowerController extends Controller {
 	/** CSRF required */
 	public function containerRecreate(string $name): DataResponse {
 		$body = $this->jsonBody();
-		return $this->requestJson('POST', '/containers/' . rawurlencode($name) . '/recreate', [
+		$payload = [
 			'pull' => (bool) ($body['pull'] ?? false),
-		], 180);
+		];
+		foreach (['env_set', 'env_unset', 'memory', 'cpus', 'restart_policy'] as $key) {
+			if (array_key_exists($key, $body)) {
+				$payload[$key] = $body[$key];
+			}
+		}
+		return $this->requestJson('POST', '/containers/' . rawurlencode($name) . '/recreate', $payload, 180);
 	}
 
 	/** CSRF required */
 	public function containerExec(string $name): DataResponse {
 		$body = $this->jsonBody();
 		return $this->requestJson('POST', '/containers/' . rawurlencode($name) . '/exec', $body, 90);
+	}
+
+	/** CSRF required */
+	public function containerRename(string $name): DataResponse {
+		$body = $this->jsonBody();
+		return $this->requestJson('POST', '/containers/' . rawurlencode($name) . '/rename', [
+			'name' => (string) ($body['name'] ?? $body['new_name'] ?? ''),
+		]);
 	}
 
 	/** CSRF required */
@@ -300,6 +354,34 @@ class TowerController extends Controller {
 		return $this->requestJson('POST', '/host/fan', $payload);
 	}
 
+	/** CSRF required — chassis PWM / profiles (body forwarded as-is) */
+	public function chassisFanSet(): DataResponse {
+		return $this->requestJson('POST', '/host/chassis-fan', $this->jsonBody());
+	}
+
+	/** CSRF required */
+	public function packageHold(): DataResponse {
+		$body = $this->jsonBody();
+		return $this->requestJson('POST', '/host/packages/hold', [
+			'package' => (string) ($body['package'] ?? ''),
+			'hold' => (bool) ($body['hold'] ?? true),
+		]);
+	}
+
+	/** CSRF required */
+	public function cronSave(): DataResponse {
+		$body = $this->jsonBody();
+		return $this->requestJson('POST', '/host/cron', [
+			'crontab' => (string) ($body['crontab'] ?? ''),
+		]);
+	}
+
+	/** CSRF required */
+	public function ollamaModels(): DataResponse {
+		$body = $this->jsonBody();
+		return $this->requestJson('POST', '/host/ollama/models', $body, 60);
+	}
+
 	/** CSRF required */
 	public function imagePull(): DataResponse {
 		$body = $this->jsonBody();
@@ -309,8 +391,24 @@ class TowerController extends Controller {
 	}
 
 	/** CSRF required */
+	public function imageRemove(): DataResponse {
+		$body = $this->jsonBody();
+		return $this->requestJson('POST', '/docker/images/remove', [
+			'ref' => (string) ($body['ref'] ?? $body['image'] ?? ''),
+		], 120);
+	}
+
+	/** CSRF required */
 	public function backupRun(): DataResponse {
 		return $this->requestJson('POST', '/ops/backup/run', [], 600);
+	}
+
+	/** CSRF required */
+	public function backupDelete(): DataResponse {
+		$body = $this->jsonBody();
+		return $this->requestJson('POST', '/ops/backup/delete', [
+			'file' => (string) ($body['file'] ?? $body['name'] ?? ''),
+		]);
 	}
 
 	/** CSRF required */

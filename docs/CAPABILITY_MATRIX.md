@@ -1,19 +1,19 @@
 # NC Tower — capability matrix
 
-Source of truth for Admin Cockpit + Webmin custom modules + Portainer CE + `/media/4TB/ops`.
+Source of truth for Webmin custom modules + Portainer CE + `/media/4TB/ops` (heritage: Admin Cockpit — see CREDITS.md).
 
 Disposition: **IN** · **EXPAND** · **DEEP_LINK** · **SKIP** · **Never** · **Debt**
 
-Program target (v1.8): standalone **day-ops** — Portainer/Webmin remain break-glass for DEEP_LINK/Never rows.
+Program target (v1.14): standalone **day-ops** — Portainer/Webmin optional second opinion for Never/SKIP rows only.
 
-## A. Admin Cockpit (upstream)
+## A. Nextcloud admin surfaces
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Admin home / users / apps / system | IN | Rebranded; subnav Ops/Host/Tools |
+| Admin home / users / apps / system | IN | Subnav Ops/Host/Tools |
 | Notifications | IN | CSRF on notify* |
 | Dashboard widget | IN | Title “NC Tower” |
-| GET mutators (enableapp, deleteuser, …) | **Debt** | Prebuilt JS; admin-only; not Ops |
+| GET mutators (enableapp, deleteuser, …) | **Debt** | Admin-only; not Ops |
 | Stub API | IN | |
 
 ## B. Custom Webmin modules
@@ -24,11 +24,11 @@ Program target (v1.8): standalone **day-ops** — Portainer/Webmin remain break-
 | nvidia-gpu | IN | `/host/gpu` (+ processes/power when available) |
 | docker | IN | Allowlisted mutate + logs/inspect/exec |
 | docker-stacks | IN | pinned up/down/restart/pull/rebuild |
-| smart-health | IN | model/temp/hours + NAS; full attrs **DEEP_LINK** |
-| backup-mgr | IN | inbox parse + **run_backup**; delete **DEEP_LINK** |
-| fan-control | PARTIAL | GPU mutate IN; chassis RO IN; PWM writes **DEEP_LINK** |
-| network-vpn | **SKIP** | NC WireGuard + Kuma |
-| ollama-mgr | **SKIP** | out of Tower |
+| smart-health | IN | model/temp/hours + NAS + per-attribute detail |
+| backup-mgr | IN | inventory + run + delete; restore stays manual |
+| fan-control | IN | GPU + chassis PWM (profiles/curves/pump safety/history) |
+| network-vpn | IN | ZeroTier/WireGuard/interfaces/ddclient/public IP (RO) |
+| ollama-mgr | IN | models list/pull/delete + VRAM |
 
 ### compose_dirs (pinned)
 
@@ -48,7 +48,7 @@ Optional `NC_TOWER_CONTAINER_LOG_ALLOW` for wider RO logs/inspect.
 | backup parse + run (`backup-enhanced.sh`) | IN |
 | CRITICAL inbox surface | IN (RO) |
 | action-executor queue | **SKIP** |
-| prune / security-update | **DEEP_LINK** / Webmin |
+| prune / security-update | curated cleanup job IN / package hold IN |
 
 ## D. Portainer CE (2.39.5)
 
@@ -56,18 +56,20 @@ Optional `NC_TOWER_CONTAINER_LOG_ALLOW` for wider RO logs/inspect.
 |-----|--------|
 | Container list/stats/ports/project | IN |
 | start/stop/restart/kill | IN (allowlist) |
-| recreate | IN (allowlist + confirm) |
+| recreate | IN (allowlist + env/memory/CPU overrides) |
 | logs tail + follow (2s poll) | IN |
 | inspect (Env redacted) | IN |
 | exec (one-shot argv) | IN (allowlist) |
 | Stacks up/down/restart/pull/rebuild | IN (pinned files) |
 | Images list + pull (pattern allow) | IN |
+| Image remove (in-use guarded) | IN |
 | Volumes / networks RO | IN |
 | Events RO | IN |
 | docker info / system df | IN |
-| Env/resource editors | **DEEP_LINK** |
-| remove/rename/duplicate | **DEEP_LINK** |
-| prune / registries / templates / Swarm | **SKIP** / **DEEP_LINK** |
+| Env/resource editors | IN (via recreate overrides) |
+| rename | IN (allowlist) |
+| duplicate | **SKIP** |
+| prune / registries / templates / Swarm | curated cleanup job IN / **SKIP** |
 | Host shell | **Never** |
 
 ## E. Stock Webmin (hybrid Host tab)
@@ -76,9 +78,10 @@ Optional `NC_TOWER_CONTAINER_LOG_ALLOW` for wider RO logs/inspect.
 |-----|--------|
 | Mounts / package-updates / proc RO | IN |
 | systemd status + allowlisted restart | IN |
-| cron RO list | IN |
-| net glance | IN |
-| useradmin / passwd / firewall editors / filemin / shell | **SKIP** (break-glass `:10000`) |
+| cron RO list + root crontab write | IN |
+| package hold/unhold | IN |
+| net glance + VPN status | IN |
+| useradmin / passwd / firewall editors / filemin / shell | **SKIP** (optional `:10000`) |
 
 ## F. Tools deep-links
 

@@ -37,25 +37,34 @@ return [
     ['name' => 'tower#hostSummary', 'url' => '/tower/host', 'verb' => 'GET'],
     ['name' => 'tower#hostGpu', 'url' => '/tower/gpu', 'verb' => 'GET'],
     ['name' => 'tower#hostSmart', 'url' => '/tower/smart', 'verb' => 'GET'],
+    ['name' => 'tower#hostSmartAttributes', 'url' => '/tower/smart/attributes', 'verb' => 'GET'],
     ['name' => 'tower#hostFan', 'url' => '/tower/fan', 'verb' => 'GET'],
     ['name' => 'tower#fanSet', 'url' => '/tower/fan', 'verb' => 'POST'],
     ['name' => 'tower#hostChassisFan', 'url' => '/tower/chassis-fan', 'verb' => 'GET'],
+    ['name' => 'tower#chassisFanSet', 'url' => '/tower/chassis-fan', 'verb' => 'POST'],
+    ['name' => 'tower#hostChassisFanHistory', 'url' => '/tower/chassis-fan/history', 'verb' => 'GET'],
     ['name' => 'tower#hostMounts', 'url' => '/tower/mounts', 'verb' => 'GET'],
     ['name' => 'tower#hostPackages', 'url' => '/tower/packages', 'verb' => 'GET'],
+    ['name' => 'tower#packageHold', 'url' => '/tower/packages/hold', 'verb' => 'POST'],
     ['name' => 'tower#hostProc', 'url' => '/tower/proc', 'verb' => 'GET'],
     ['name' => 'tower#hostNet', 'url' => '/tower/net', 'verb' => 'GET'],
+    ['name' => 'tower#hostNetwork', 'url' => '/tower/network', 'verb' => 'GET'],
+    ['name' => 'tower#hostOllama', 'url' => '/tower/ollama', 'verb' => 'GET'],
+    ['name' => 'tower#ollamaModels', 'url' => '/tower/ollama/models', 'verb' => 'POST'],
     ['name' => 'tower#hostSystemd', 'url' => '/tower/systemd', 'verb' => 'GET'],
     ['name' => 'tower#systemdRestart', 'url' => '/tower/systemd/restart', 'verb' => 'POST'],
     ['name' => 'tower#hostCron', 'url' => '/tower/cron', 'verb' => 'GET'],
+    ['name' => 'tower#cronSave', 'url' => '/tower/cron', 'verb' => 'POST'],
     ['name' => 'tower#containers', 'url' => '/tower/containers', 'verb' => 'GET'],
     ['name' => 'tower#containerLogs', 'url' => '/tower/containers/{name}/logs', 'verb' => 'GET'],
     ['name' => 'tower#containerInspect', 'url' => '/tower/containers/{name}/inspect', 'verb' => 'GET'],
+    ['name' => 'tower#containerStats', 'url' => '/tower/containers/{name}/stats', 'verb' => 'GET'],
     // Routes resolve in declaration order, so a {action} placeholder here would
-    // swallow /recreate and /exec and hand them to containerAction(), which
-    // rejects anything outside its allowlist with a 400. Both features were
-    // dead that way. Enumerate the verbs instead: nothing can shadow a sibling.
+    // swallow /recreate, /exec and /rename and hand them to containerAction(), which
+    // rejects anything outside its allowlist with a 400. Enumerate the verbs instead.
     ['name' => 'tower#containerRecreate', 'url' => '/tower/containers/{name}/recreate', 'verb' => 'POST'],
     ['name' => 'tower#containerExec', 'url' => '/tower/containers/{name}/exec', 'verb' => 'POST'],
+    ['name' => 'tower#containerRename', 'url' => '/tower/containers/{name}/rename', 'verb' => 'POST'],
     [
         'name' => 'tower#containerAction',
         'url' => '/tower/containers/{name}/{action}',
@@ -67,6 +76,7 @@ return [
     ['name' => 'tower#dockerEvents', 'url' => '/tower/docker/events', 'verb' => 'GET'],
     ['name' => 'tower#dockerImages', 'url' => '/tower/docker/images', 'verb' => 'GET'],
     ['name' => 'tower#imagePull', 'url' => '/tower/docker/images/pull', 'verb' => 'POST'],
+    ['name' => 'tower#imageRemove', 'url' => '/tower/docker/images/remove', 'verb' => 'POST'],
     ['name' => 'tower#dockerVolumes', 'url' => '/tower/docker/volumes', 'verb' => 'GET'],
     ['name' => 'tower#dockerNetworks', 'url' => '/tower/docker/networks', 'verb' => 'GET'],
     ['name' => 'tower#stacks', 'url' => '/tower/stacks', 'verb' => 'GET'],
@@ -77,7 +87,10 @@ return [
         'requirements' => ['action' => 'up|down|restart|pull|rebuild'],
     ],
     ['name' => 'tower#opsInbox', 'url' => '/tower/ops-inbox', 'verb' => 'GET'],
+    ['name' => 'tower#opsAudit', 'url' => '/tower/audit', 'verb' => 'GET'],
+    ['name' => 'tower#backupInventory', 'url' => '/tower/backup', 'verb' => 'GET'],
     ['name' => 'tower#backupRun', 'url' => '/tower/backup/run', 'verb' => 'POST'],
+    ['name' => 'tower#backupDelete', 'url' => '/tower/backup/delete', 'verb' => 'POST'],
     ['name' => 'tower#tools', 'url' => '/tower/tools', 'verb' => 'GET'],
     ['name' => 'tower#services', 'url' => '/tower/services', 'verb' => 'GET'],
     ['name' => 'tower#hostUpdates', 'url' => '/tower/updates', 'verb' => 'GET'],
@@ -90,7 +103,7 @@ return [
         'name' => 'tower#jobStart',
         'url' => '/tower/jobs/{kind}',
         'verb' => 'POST',
-        'requirements' => ['kind' => 'apt-upgrade|apt-dry-run|backup|image-pull|stack-action'],
+        'requirements' => ['kind' => 'apt-upgrade|apt-dry-run|backup|image-pull|stack-action|docker-cleanup|ollama-pull'],
     ],
   ]
 ];

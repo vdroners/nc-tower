@@ -1,6 +1,24 @@
 # Changelog
 
-## [1.13.0] - 2026-08-04
+## [1.14.0] - 2026-08-04
+
+### Added
+- Chassis PWM fan control with profiles, 5-point curves, pump safety, reboot-survival config, and 30 s trend sampler
+- Fan visualizations (`FanPanel` / `FanCharts`): RPM/temp history, gauges, live operating point on the curve
+- Container rename, recreate env/memory/CPU overrides, live stats, guarded image remove
+- Detached `docker-cleanup` job (curated host script; no prune routes)
+- Package hold/unhold, root cron editor with backups, SMART per-attribute detail, backup inventory + delete
+- Ops Network (ZeroTier/WireGuard/interfaces/ddclient/public IP), Ollama manager, Audit log viewer
+- Sidecar `/health` capabilities + version for UI feature-gating
+- Operator guide [`docs/OPS_PANELS.md`](docs/OPS_PANELS.md); plan [`docs/plans/webmin-portainer-parity.md`](docs/plans/webmin-portainer-parity.md)
+- API gates G28 (parity) and G29 (provenance scrub)
+
+### Changed
+- Tools break-glass: Webmin/Portainer optional second opinion; SMART/Backup/Fans/Network/Ollama absorbed into Ops
+- Sole authorship in `info.xml` / README heritage section; Admin Cockpit credit confined to CREDITS.md
+
+### Fixed
+- Host network interfaces table uses `interfaces.items` from the sidecar payload
 
 ### Added
 - Live App Store update listing/action via client `appstore` OCS (`appstoreOcs.js`)

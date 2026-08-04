@@ -167,6 +167,37 @@ describe('assess — Nextcloud platform health', () => {
 	it('does not treat stubbed app-update listing zeros as pending updates', () => {
 		expect(assess({ updates: { appscount: 0, available: false } }).items).toHaveLength(0)
 	})
+
+	it('warns when a used chassis fan reports 0 RPM', () => {
+		const result = assess({
+			chassisFan: { fans: [{ header: 'RAD1', role: 'radiator', rpm: 0, pwm: 180 }] },
+		})
+		expect(result.level).toBe(WARN)
+		expect(find(result, 'stopped')).toBeTruthy()
+	})
+
+	it('ignores unused chassis fans at 0 RPM', () => {
+		expect(assess({
+			chassisFan: { fans: [{ header: 'FAN3', role: 'unused', rpm: 0 }] },
+		}).items).toHaveLength(0)
+	})
+
+	it('warns when pump PWM is below full', () => {
+		const result = assess({
+			chassisFan: { fans: [{ header: 'PUMP', role: 'pump', rpm: 3000, pwm: 200 }] },
+		})
+		expect(find(result, 'PWM below full')).toBeTruthy()
+	})
+
+	it('warns when backup inventory is empty or stale past 48 h', () => {
+		expect(find(assess({ backup: { items: [], count: 0 } }), 'inventory empty')).toBeTruthy()
+		expect(find(assess({
+			backup: { items: [{ name: 'old.tgz', age_hours: 60 }], newest: { name: 'old.tgz', age_hours: 60 } },
+		}), 'older than 48')).toBeTruthy()
+		expect(assess({
+			backup: { items: [{ name: 'fresh.tgz', age_hours: 2 }], newest: { name: 'fresh.tgz', age_hours: 2 } },
+		}).items).toHaveLength(0)
+	})
 })
 
 describe('assess — SMART age copy', () => {

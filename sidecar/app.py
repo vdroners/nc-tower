@@ -21,6 +21,23 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
+from chassis_fan import ChassisFanController
+from parity import (
+    CAPABILITIES,
+    SIDECAR_VERSION,
+    DEV_RE,
+    MODEL_RE,
+    PKG_RE,
+    apply_recreate_overrides,
+    audit_tail,
+    backup_path_contained,
+    host_network_payload,
+    ollama_delete,
+    ollama_get,
+    parse_smart_attributes,
+    validate_container_name,
+)
+
 
 def _env(name: str, default: str, *aliases: str) -> str:
     for key in (name, *aliases):
@@ -101,8 +118,17 @@ HOST_FAN_HELPER = _env(
     "/usr/share/webmin/fan-control/gpu-fan-helper.py",
     "NC_TOWER_HOST_FAN_HELPER",
 )
+OLLAMA_URL = _env("OLLAMA_URL", "http://10.0.0.84:11434", "NC_TOWER_OLLAMA_URL")
+BACKUP_DIR = Path(_env("BACKUP_DIR", "/media/4TB/backups", "NC_TOWER_BACKUP_DIR"))
+DOCKER_CLEANUP_SCRIPT = _env(
+    "DOCKER_CLEANUP_SCRIPT",
+    "/ops/bin/webmin/docker-cleanup.sh",
+    "NC_TOWER_DOCKER_CLEANUP_SCRIPT",
+)
 
 _AUDIT_LOCK = threading.Lock()
+_PUBLIC_IP_CACHE: dict[str, Any] = {}
+_CHASSIS: ChassisFanController | None = None
 _META_RE = re.compile(r"[;|&$`]")
 _SAFE_EVENT_SINCE_RE = re.compile(r"^[0-9]{1,7}(?:s|m|h|d)?$")
 _FORBIDDEN_EXEC = {
@@ -652,50 +678,31 @@ def host_fan_set(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def host_chassis_fan() -> dict[str, Any]:
-    chips = []
-    flat: list[dict[str, Any]] = []
-    for base in sorted(Path("/sys/class/hwmon").glob("hwmon*")):
-        sensors = []
-        chip_name = _read_text(base / "name").strip()
-        for source in sorted(base.glob("fan*_input")):
-            token = source.stem.split("_")[0]
-            pwm_path = base / f"pwm{token.replace('fan', '')}"
-            if not pwm_path.is_file():
-                # fan1_input -> pwm1
-                m = re.match(r"fan(\d+)", token)
-                pwm_path = base / f"pwm{m.group(1)}" if m else Path()
-            entry = {
-                "fan": token,
-                "name": (_read_text(base / f"{token}_label").strip() or f"{chip_name}:{token}"),
-                "rpm": _number(_read_text(source)),
-                "label": _read_text(base / f"{token}_label").strip() or None,
-                "pwm": _number(_read_text(pwm_path)) if pwm_path.is_file() else None,
-                "chip": chip_name,
-                "hwmon": base.name,
-                "min_rpm": _number(_read_text(base / f"{token}_min")),
-                "max_rpm": _number(_read_text(base / f"{token}_max")),
-            }
-            sensors.append(entry)
-            flat.append(entry)
-        pwms = [
-            {
-                "pwm": source.name,
-                "value": _number(_read_text(source)),
-                "enable": _number(_read_text(base / f"{source.name}_enable")),
-            }
-            for source in sorted(base.glob("pwm[0-9]*"))
-            if re.fullmatch(r"pwm\d+", source.name)
-        ]
-        if sensors or pwms:
-            chips.append(
-                {
-                    "hwmon": base.name,
-                    "name": chip_name,
-                    "fans": sensors,
-                    "pwms": pwms,
-                }
-            )
-    return {"chips": chips, "fans": flat, "items": flat, "ts": time.time()}
+    return _chassis().status()
+
+
+def host_chassis_fan_set(body: dict[str, Any]) -> dict[str, Any]:
+    return _chassis().mutate(body)
+
+
+def host_chassis_fan_history(minutes: int = 60) -> dict[str, Any]:
+    return _chassis().history(minutes)
+
+
+def _chassis() -> ChassisFanController:
+    global _CHASSIS
+    if _CHASSIS is None:
+        _CHASSIS = ChassisFanController(
+            OPS_ROOT,
+            read_text=_read_text,
+            number=_number,
+            run=_run,
+            nsenter_bin=_nsenter_bin,
+            audit=audit,
+            fan_set=host_fan_set,
+            gpu_status=host_gpu,
+        )
+    return _CHASSIS
 
 
 def host_packages() -> dict[str, Any]:
@@ -706,11 +713,21 @@ def host_packages() -> dict[str, Any]:
             timeout=60,
             max_output=150_000,
         )
+        held_result = _run(
+            [nsenter, "--mount=/proc/1/ns/mnt", "--", "/usr/bin/apt-mark", "showhold"],
+            timeout=30,
+        )
     else:
         apt = _which("apt")
         if not apt:
             return {"unavailable": True, "reason": "apt_missing", "packages": []}
         result = _run([apt, "list", "--upgradable"], timeout=60, max_output=150_000)
+        held_result = _run([_which("apt-mark") or "apt-mark", "showhold"], timeout=30)
+    held = {
+        line.strip()
+        for line in (held_result.get("stdout") or "").splitlines()
+        if line.strip()
+    }
     packages = []
     for line in result["stdout"].splitlines():
         if not line or line.startswith("Listing"):
@@ -723,6 +740,7 @@ def host_packages() -> dict[str, Any]:
                 "new_version": match.group(3),
                 "arch": match.group(4),
                 "old_version": match.group(5),
+                "held": match.group(1) in held,
             }
             if match
             else {"raw": line}
@@ -730,10 +748,42 @@ def host_packages() -> dict[str, Any]:
     return {
         "unavailable": result["exit"] != 0,
         "packages": packages,
+        "held": sorted(held),
         "exit": result["exit"],
         "error": result["stderr"] or result.get("error"),
         "ts": time.time(),
     }
+
+
+def host_package_hold(body: dict[str, Any]) -> dict[str, Any]:
+    package = str(body.get("package") or "")
+    hold = bool(body.get("hold", True))
+    if not PKG_RE.fullmatch(package):
+        return {"ok": False, "error": "invalid_package", "http": 400}
+    # Only allow hold/unhold for packages that appear in upgradable or held lists.
+    inventory = host_packages()
+    known = {p.get("name") for p in inventory.get("packages") or [] if isinstance(p, dict)}
+    known.update(inventory.get("held") or [])
+    if package not in known:
+        # Also accept exact installed name via dpkg -s
+        nsenter = _nsenter_bin()
+        check = (
+            _run([nsenter, "--mount=/proc/1/ns/mnt", "--", "/usr/bin/dpkg-query", "-W", "-f=${Package}", package], timeout=10)
+            if nsenter
+            else _run(["dpkg-query", "-W", "-f=${Package}", package], timeout=10)
+        )
+        if (check.get("stdout") or "").strip() != package:
+            return {"ok": False, "error": "package_not_installed", "http": 404}
+    action = "hold" if hold else "unhold"
+    nsenter = _nsenter_bin()
+    argv = (
+        [nsenter, "--mount=/proc/1/ns/mnt", "--", "/usr/bin/apt-mark", action, package]
+        if nsenter
+        else ["apt-mark", action, package]
+    )
+    result = _run(argv, timeout=30)
+    audit(f"package {action} package={package} exit={result['exit']}")
+    return {"ok": result["exit"] == 0, "package": package, "hold": hold, **result}
 
 
 def host_processes() -> dict[str, Any]:
@@ -854,7 +904,71 @@ def host_cron() -> dict[str, Any]:
         cron_dir = Path("/etc/cron.d")
         if cron_dir.is_dir():
             cron_d = sorted(p.name for p in cron_dir.iterdir() if p.is_file() and not p.name.startswith("."))
-    return {"root_crontab": root_lines, "cron_d_files": cron_d, "error": error, "ts": time.time()}
+    return {
+        "root_crontab": root_lines,
+        "root_crontab_raw": result["stdout"] if result["exit"] == 0 else "",
+        "cron_d_files": cron_d,
+        "error": error,
+        "ts": time.time(),
+    }
+
+
+def host_cron_save(body: dict[str, Any]) -> dict[str, Any]:
+    """Replace the root crontab after a backup + syntax sanity check."""
+    text = body.get("crontab")
+    if not isinstance(text, str):
+        return {"ok": False, "error": "crontab_must_be_string", "http": 400}
+    if len(text) > 200_000:
+        return {"ok": False, "error": "crontab_too_large", "http": 400}
+    # Reject shell metacharacters outside comments — crontab lines are schedule + command.
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if any(tok in stripped for tok in ("\x00",)):
+            return {"ok": False, "error": "unsafe_crontab", "http": 400}
+    backup_dir = OPS_ROOT / "state" / "cron-backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+    current = host_cron()
+    backup_path = backup_dir / f"root-{stamp}.crontab"
+    try:
+        backup_path.write_text(current.get("root_crontab_raw") or "", encoding="utf-8")
+    except OSError as exc:
+        return {"ok": False, "error": f"backup_failed:{exc}", "http": 500}
+    nsenter = _nsenter_bin()
+    # Pipe new crontab into crontab -
+    if nsenter:
+        proc = subprocess.run(
+            [nsenter, "--mount=/proc/1/ns/mnt", "--", "/usr/bin/crontab", "-", "-u", "root"],
+            input=text,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=15,
+            check=False,
+        )
+    else:
+        crontab = _which("crontab")
+        if not crontab:
+            return {"ok": False, "error": "crontab_missing", "http": 503}
+        proc = subprocess.run(
+            [crontab, "-", "-u", "root"],
+            input=text,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=15,
+            check=False,
+        )
+    audit(f"cron save exit={proc.returncode} backup={backup_path.name}")
+    return {
+        "ok": proc.returncode == 0,
+        "backup": str(backup_path),
+        "exit": proc.returncode,
+        "stderr": (proc.stderr or "")[-2000:],
+        "stdout": (proc.stdout or "")[-2000:],
+    }
 
 
 def _name_matches(name: str, patterns: list[str]) -> bool:
@@ -1058,7 +1172,7 @@ def _reconstruct_run_args(name: str, inspect: dict[str, Any]) -> list[str]:
     return args
 
 
-def container_recreate(name: str, pull: bool = False) -> dict[str, Any]:
+def container_recreate(name: str, pull: bool = False, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
     if not _name_allowed(name):
         audit(f"container recreate name={name} denied")
         return {"ok": False, "error": "forbidden", "http": 403}
@@ -1072,11 +1186,21 @@ def container_recreate(name: str, pull: bool = False) -> dict[str, Any]:
         pulled = _run([_docker_bin(), "pull", image], timeout=600)
         if pulled["exit"] != 0:
             return {"ok": False, "error": "pull_failed", "pull": pulled}
-    compose_result = _compose_recreate_from_labels(inspect)
-    if compose_result is not None:
-        audit(f"container recreate name={name} method=compose exit={compose_result['exit']}")
-        return {"ok": compose_result["exit"] == 0, "name": name, **compose_result}
+    overrides = overrides or {}
+    has_overrides = any(
+        overrides.get(key) not in (None, "", [], {})
+        for key in ("env_set", "env_unset", "memory", "cpus", "restart_policy")
+    )
+    if not has_overrides:
+        compose_result = _compose_recreate_from_labels(inspect)
+        if compose_result is not None:
+            audit(f"container recreate name={name} method=compose exit={compose_result['exit']}")
+            return {"ok": compose_result["exit"] == 0, "name": name, **compose_result}
     run_args = _reconstruct_run_args(name, inspect)
+    if has_overrides:
+        run_args, oerr = apply_recreate_overrides(run_args, overrides)
+        if oerr or run_args is None:
+            return {"ok": False, "error": oerr, "http": 400}
     stop = _run([_docker_bin(), "stop", name], timeout=75)
     if stop["exit"] != 0:
         audit(f"container recreate name={name} stop_failed")
@@ -1086,14 +1210,85 @@ def container_recreate(name: str, pull: bool = False) -> dict[str, Any]:
         audit(f"container recreate name={name} remove_failed")
         return {"ok": False, "error": "remove_failed", "detail": remove}
     created = _run(run_args, timeout=120)
-    audit(f"container recreate name={name} method=reconstructed exit={created['exit']}")
+    audit(f"container recreate name={name} method=reconstructed exit={created['exit']} overrides={has_overrides}")
     return {
         "ok": created["exit"] == 0,
         "name": name,
         "method": "reconstructed",
-        "warning": "compose metadata unavailable; recreated from inspect subset",
+        "warning": "compose metadata unavailable; recreated from inspect subset"
+        if not has_overrides
+        else "recreated with operator overrides",
         **created,
     }
+
+
+def container_rename(name: str, new_name: str) -> dict[str, Any]:
+    if not _name_allowed(name):
+        audit(f"container rename name={name} denied")
+        return {"ok": False, "error": "forbidden", "http": 403}
+    if not validate_container_name(new_name):
+        return {"ok": False, "error": "invalid_new_name", "http": 400}
+    if not _name_allowed(new_name):
+        return {"ok": False, "error": "new_name_forbidden", "http": 403}
+    result = _run([_docker_bin(), "rename", name, new_name], timeout=30)
+    audit(f"container rename {name}->{new_name} exit={result['exit']}")
+    return {"ok": result["exit"] == 0, "name": name, "new_name": new_name, **result}
+
+
+def container_stats(name: str) -> dict[str, Any]:
+    if not _name_allowed(name) and not _name_log_allowed(name):
+        # Allow stats for allowlisted containers; deny list still wins.
+        if _name_denied(name) or not _name_matches(name, CONTAINER_ALLOW + CONTAINER_LOG_ALLOW):
+            return {"ok": False, "error": "forbidden", "http": 403}
+    result = _run(
+        [
+            _docker_bin(),
+            "stats",
+            "--no-stream",
+            "--format",
+            "{{json .}}",
+            name,
+        ],
+        timeout=20,
+    )
+    if result["exit"] != 0:
+        return {"ok": False, "error": result["stderr"] or "stats_failed", **result}
+    rows = _json_lines(result["stdout"])
+    row = rows[0] if rows else {}
+    return {"ok": True, "name": name, "stats": row, "ts": time.time()}
+
+
+def docker_image_remove(body: dict[str, Any]) -> dict[str, Any]:
+    ref = str(body.get("ref") or body.get("image") or "")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./:@+-]{0,254}", ref):
+        return {"ok": False, "error": "invalid_ref", "http": 400}
+    # Find containers referencing this image (running or stopped).
+    listing = _run(
+        [_docker_bin(), "ps", "-a", "--format", "{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.ImageID}}"],
+        timeout=30,
+        max_output=500_000,
+        keep="head",
+    )
+    blockers = []
+    for line in (listing.get("stdout") or "").splitlines():
+        parts = line.split("\t")
+        if len(parts) < 4:
+            continue
+        image_name, image_id = parts[2], parts[3]
+        if ref == image_name or ref in image_id or image_id.endswith(ref) or ref.endswith(image_id):
+            blockers.append({"id": parts[0], "name": parts[1], "image": image_name})
+        elif ref.split(":")[0] == image_name.split(":")[0] and ":" in ref and ref == image_name:
+            blockers.append({"id": parts[0], "name": parts[1], "image": image_name})
+    if blockers:
+        return {
+            "ok": False,
+            "error": "image_in_use",
+            "http": 409,
+            "containers": blockers,
+        }
+    result = _run([_docker_bin(), "rmi", ref], timeout=120)
+    audit(f"image remove ref={ref} exit={result['exit']}")
+    return {"ok": result["exit"] == 0, "ref": ref, **result}
 
 
 def container_exec(name: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -1534,6 +1729,33 @@ def _job_argv(kind: str, body: dict[str, Any]) -> tuple[list[str] | None, str | 
         if compose_file is None:
             return (None, "forbidden_or_missing_file")
         return ([_docker_bin(), "compose", "-f", str(compose_file), *commands[action]], None)
+    if kind == "docker-cleanup":
+        try:
+            script = Path(DOCKER_CLEANUP_SCRIPT).resolve(strict=True)
+            script.relative_to((OPS_ROOT / "bin").resolve(strict=True))
+        except (OSError, ValueError):
+            return (None, "cleanup_script_outside_ops_bin_or_missing")
+        # Curated host script; never invoke docker ... prune from this process.
+        return ([str(script), "prune"], None)
+    if kind == "ollama-pull":
+        model = str(body.get("model") or "")
+        if not MODEL_RE.fullmatch(model):
+            return (None, "invalid_model")
+        # Use curl against local Ollama so the job stays in the host namespace.
+        return (
+            [
+                "/usr/bin/curl",
+                "-fsS",
+                "-X",
+                "POST",
+                f"{OLLAMA_URL.rstrip('/')}/api/pull",
+                "-H",
+                "Content-Type: application/json",
+                "-d",
+                json.dumps({"name": model, "stream": False}),
+            ],
+            None,
+        )
     return (None, "unknown_kind")
 
 
@@ -1751,6 +1973,142 @@ def backup_run() -> dict[str, Any]:
     return {"ok": result["exit"] == 0, "script": str(script), **result}
 
 
+def backup_inventory(retention_days: int = 30) -> dict[str, Any]:
+    root = BACKUP_DIR
+    items = []
+    if root.is_dir():
+        for path in sorted(root.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+            if not path.is_file() or path.name.startswith("."):
+                continue
+            st = path.stat()
+            age_h = (time.time() - st.st_mtime) / 3600
+            items.append(
+                {
+                    "name": path.name,
+                    "size": st.st_size,
+                    "mtime": st.st_mtime,
+                    "age_hours": round(age_h, 1),
+                    "age_days": round(age_h / 24, 2),
+                }
+            )
+    newest = items[0] if items else None
+    return {
+        "ok": True,
+        "dir": str(root),
+        "retention_days": retention_days,
+        "items": items,
+        "count": len(items),
+        "newest": newest,
+        "stale": (not newest) or (newest["age_hours"] > 48),
+        "ts": time.time(),
+    }
+
+
+def backup_delete(body: dict[str, Any]) -> dict[str, Any]:
+    filename = str(body.get("file") or body.get("name") or "")
+    path = backup_path_contained(BACKUP_DIR, filename)
+    if path is None:
+        return {"ok": False, "error": "invalid_or_missing_file", "http": 400}
+    try:
+        path.unlink()
+    except OSError as exc:
+        audit(f"backup delete file={filename} error={exc}")
+        return {"ok": False, "error": str(exc), "http": 500}
+    audit(f"backup delete file={filename}")
+    return {"ok": True, "file": filename}
+
+
+def host_smart_attributes(device: str) -> dict[str, Any]:
+    if not DEV_RE.fullmatch(device or ""):
+        return {"ok": False, "error": "invalid_device", "http": 400}
+    ctl = _which(SMARTCTL) or _which("smartctl")
+    if not ctl:
+        return {"ok": False, "error": "smartctl_missing", "http": 503}
+    result = _run([ctl, "-x", "-j", device], timeout=40, max_output=500_000)
+    try:
+        payload = json.loads(result["stdout"] or "{}")
+    except json.JSONDecodeError:
+        return {"ok": False, "error": "smartctl_json_parse_failed", "stdout": (result["stdout"] or "")[:500]}
+    rows = parse_smart_attributes(payload)
+    return {
+        "ok": True,
+        "device": device,
+        "model": (payload.get("model_name") or payload.get("scsi_model_name")),
+        "serial": payload.get("serial_number"),
+        "attributes": rows,
+        "ts": time.time(),
+    }
+
+
+def host_network() -> dict[str, Any]:
+    return host_network_payload(run=_run, nsenter_bin=_nsenter_bin, public_ip_cache=_PUBLIC_IP_CACHE)
+
+
+def host_ollama() -> dict[str, Any]:
+    payload = ollama_get(OLLAMA_URL)
+    try:
+        gpu = host_gpu()
+        payload["vram"] = [
+            {
+                "name": g.get("name"),
+                "mem_used_mib": g.get("mem_used_mib"),
+                "mem_total_mib": g.get("mem_total_mib"),
+            }
+            for g in (gpu.get("gpus") or gpu.get("items") or [])
+            if isinstance(g, dict)
+        ]
+    except Exception:  # noqa: BLE001
+        payload["vram"] = []
+    nsenter = _nsenter_bin()
+    tunnel: dict[str, Any] = {"unavailable": True, "reason": "not_configured"}
+    for unit in ("cloudflared.service", "ollama-tunnel.service"):
+        argv = (
+            [nsenter, "--mount=/proc/1/ns/mnt", "--", "/bin/systemctl", "is-active", unit]
+            if nsenter
+            else ["systemctl", "is-active", unit]
+        )
+        result = _run(argv, timeout=5)
+        state = (result.get("stdout") or "").strip()
+        if state in {"active", "inactive", "failed"}:
+            tunnel = {"unavailable": False, "unit": unit, "state": state}
+            break
+    payload["tunnel"] = tunnel
+    return payload
+
+
+def host_ollama_models(body: dict[str, Any]) -> dict[str, Any]:
+    op = str(body.get("op") or "")
+    model = str(body.get("model") or "")
+    if op == "pull":
+        if not MODEL_RE.fullmatch(model):
+            return {"ok": False, "error": "invalid_model", "http": 400}
+        return job_start("ollama-pull", {"model": model})
+    if op == "delete":
+        inventory = ollama_get(OLLAMA_URL)
+        names = {
+            str(m.get("name") or m.get("model") or "")
+            for m in (inventory.get("models") or [])
+            if isinstance(m, dict)
+        }
+        running = {
+            str(m.get("name") or m.get("model") or "")
+            for m in (inventory.get("running") or [])
+            if isinstance(m, dict)
+        }
+        if model not in names:
+            return {"ok": False, "error": "model_not_in_inventory", "http": 404}
+        if model in running and not body.get("force"):
+            return {"ok": False, "error": "model_running", "http": 409, "running": True}
+        result = ollama_delete(OLLAMA_URL, model)
+        audit(f"ollama delete model={model} ok={result.get('ok')}")
+        return result
+    return {"ok": False, "error": "invalid_op", "http": 400}
+
+
+def ops_audit(limit: int = 200) -> dict[str, Any]:
+    return audit_tail(AUDIT_LOG, limit)
+
+
 def _parse_alert(path: Path) -> dict[str, Any] | None:
     try:
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -1894,17 +2252,35 @@ class Handler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
         try:
             if path == "/health":
-                self._send(200, {"ok": True, "service": "nc-tower-sidecar", "ts": time.time()})
+                self._send(
+                    200,
+                    {
+                        "ok": True,
+                        "service": "nc-tower-sidecar",
+                        "version": SIDECAR_VERSION,
+                        "capabilities": CAPABILITIES,
+                        "ts": time.time(),
+                    },
+                )
             elif path == "/host/summary":
                 self._send(200, host_summary())
             elif path == "/host/gpu":
                 self._send(200, host_gpu())
             elif path == "/host/smart":
                 self._send(200, host_smart())
+            elif path == "/host/smart/attributes":
+                device = (query.get("dev") or query.get("device") or [""])[0]
+                self._result(host_smart_attributes(device))
             elif path == "/host/fan":
                 self._send(200, host_fan_get())
             elif path == "/host/chassis-fan":
                 self._send(200, host_chassis_fan())
+            elif path == "/host/chassis-fan/history":
+                try:
+                    minutes = int((query.get("minutes") or ["60"])[0])
+                except ValueError:
+                    minutes = 60
+                self._send(200, host_chassis_fan_history(minutes))
             elif path == "/host/mounts":
                 self._send(200, host_mounts())
             elif path == "/host/packages":
@@ -1913,6 +2289,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, host_processes())
             elif path == "/host/net":
                 self._send(200, {"ifaces": _interfaces(), "ts": time.time()})
+            elif path == "/host/network":
+                self._send(200, host_network())
+            elif path == "/host/ollama":
+                self._send(200, host_ollama())
             elif path == "/host/systemd":
                 self._send(200, host_systemd())
             elif path == "/host/cron":
@@ -1929,6 +2309,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._result(container_logs(name, tail, (query.get("since") or [None])[0]))
             elif (match := re.fullmatch(r"/containers/(.+)/inspect", path)):
                 self._result(container_inspect(unquote(match.group(1))))
+            elif (match := re.fullmatch(r"/containers/(.+)/stats", path)):
+                self._result(container_stats(unquote(match.group(1))))
             elif path == "/docker/info":
                 self._result(docker_info())
             elif path == "/docker/df":
@@ -1958,6 +2340,18 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError:
                     hours = 24
                 self._send(200, ops_timeline(hours))
+            elif path == "/ops/audit":
+                try:
+                    limit = int((query.get("limit") or ["200"])[0])
+                except ValueError:
+                    limit = 200
+                self._send(200, ops_audit(limit))
+            elif path == "/ops/backup":
+                try:
+                    retention = int((query.get("retention_days") or ["30"])[0])
+                except ValueError:
+                    retention = 30
+                self._send(200, backup_inventory(retention))
             elif path == "/host/updates":
                 self._send(200, host_updates())
             elif path == "/host/history":
@@ -1987,14 +2381,32 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/host/fan":
                 self._result(host_fan_set(body))
                 return
+            if path == "/host/chassis-fan":
+                self._result(host_chassis_fan_set(body))
+                return
             if path == "/host/systemd/restart":
                 self._result(host_systemd_restart(body))
+                return
+            if path == "/host/packages/hold":
+                self._result(host_package_hold(body))
+                return
+            if path == "/host/cron":
+                self._result(host_cron_save(body))
+                return
+            if path == "/host/ollama/models":
+                self._result(host_ollama_models(body))
                 return
             if path == "/docker/images/pull":
                 self._result(docker_image_pull(body))
                 return
+            if path == "/docker/images/remove":
+                self._result(docker_image_remove(body))
+                return
             if path == "/ops/backup/run":
                 self._result(backup_run())
+                return
+            if path == "/ops/backup/delete":
+                self._result(backup_delete(body))
                 return
             if match := re.fullmatch(r"/jobs/([a-z-]+)", path):
                 self._result(job_start(match.group(1), body))
@@ -2003,7 +2415,23 @@ class Handler(BaseHTTPRequestHandler):
                 self._result(container_action(unquote(match.group(1)), match.group(2)))
                 return
             if match := re.fullmatch(r"/containers/(.+)/recreate", path):
-                self._result(container_recreate(unquote(match.group(1)), bool(body.get("pull"))))
+                overrides = {
+                    "env_set": body.get("env_set"),
+                    "env_unset": body.get("env_unset"),
+                    "memory": body.get("memory"),
+                    "cpus": body.get("cpus"),
+                    "restart_policy": body.get("restart_policy"),
+                }
+                self._result(
+                    container_recreate(
+                        unquote(match.group(1)),
+                        bool(body.get("pull")),
+                        overrides,
+                    )
+                )
+                return
+            if match := re.fullmatch(r"/containers/(.+)/rename", path):
+                self._result(container_rename(unquote(match.group(1)), str(body.get("name") or body.get("new_name") or "")))
                 return
             if match := re.fullmatch(r"/containers/(.+)/exec", path):
                 self._result(container_exec(unquote(match.group(1)), body))
@@ -2018,10 +2446,18 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    controller = _chassis()
+    try:
+        reapply = controller.re_apply()
+        audit(f"chassis-fan startup re-apply ok={reapply.get('ok')}")
+    except Exception as exc:  # noqa: BLE001
+        audit(f"chassis-fan startup re-apply error={exc}")
+    controller.start_sampler()
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True
     print(
         f"nc-tower-sidecar listening on {BIND}:{PORT} "
+        f"version={SIDECAR_VERSION} "
         f"token={'configured' if TOKEN else 'missing-health-only'}",
         flush=True,
     )

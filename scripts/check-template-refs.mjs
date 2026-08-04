@@ -39,6 +39,7 @@ const ALLOWED = new Set([
 	'_c', '_v', '_s', '_e', '_l', '_t', '_u', '_m', '_b', '_g', '_k', '_n', '_o', '_q', '_i', '_p', '_f',
 	'$createElement', '$scopedSlots', '$slots', '$attrs', '$listeners', '$emit', '$set', '$delete',
 	'$refs', '$el', '$data', '$props', '$options', '$nextTick', '$root', '$parent', '$children',
+	'$forceUpdate',
 	'_self', '_uid', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Math', 'JSON', 'Date',
 	'parseFloat', 'parseInt', 'isNaN', 'encodeURIComponent', 'decodeURIComponent',
 ])

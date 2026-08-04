@@ -63,6 +63,7 @@ $base = '/apps/nc_tower/tower';
 foreach ([
 	'exec' => 'nc_tower.tower.containerexec',
 	'recreate' => 'nc_tower.tower.containerrecreate',
+	'rename' => 'nc_tower.tower.containerrename',
 ] as $verb => $expected) {
 	$hit = resolve('POST', "$base/containers/gcs_probe/$verb");
 	gate('G25', "container $verb reaches its own handler"
@@ -92,13 +93,20 @@ gate('G25', 'unknown stack action is refused by the router',
 // Jobs: the GET and POST forms share a URL shape and must not collide.
 $hit = resolve('GET', "$base/jobs/20260803-151145-apt-dry-run-663b0f");
 gate('G25', 'job read resolves to tower#job', $hit && $hit['route'] === 'nc_tower.tower.job');
-$hit = resolve('POST', "$base/jobs/apt-upgrade");
-gate('G25', 'job start resolves to tower#jobstart', $hit && $hit['route'] === 'nc_tower.tower.jobstart');
+foreach (['apt-upgrade', 'docker-cleanup', 'ollama-pull'] as $kind) {
+	$hit = resolve('POST', "$base/jobs/$kind");
+	gate('G25', "job start $kind resolves to tower#jobstart",
+		$hit && $hit['route'] === 'nc_tower.tower.jobstart');
+}
 gate('G25', 'unknown job kind is refused by the router',
 	resolve('POST', "$base/jobs/rm-rf") === null);
 
 // Read paths must not be shadowed either.
-foreach (['logs' => 'nc_tower.tower.containerlogs', 'inspect' => 'nc_tower.tower.containerinspect'] as $verb => $expected) {
+foreach ([
+	'logs' => 'nc_tower.tower.containerlogs',
+	'inspect' => 'nc_tower.tower.containerinspect',
+	'stats' => 'nc_tower.tower.containerstats',
+] as $verb => $expected) {
 	$hit = resolve('GET', "$base/containers/gcs_probe/$verb");
 	gate('G25', "container $verb resolves", $hit && $hit['route'] === $expected);
 }

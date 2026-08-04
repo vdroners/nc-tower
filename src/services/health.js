@@ -67,6 +67,8 @@ function overThreshold(value, warn, crit) {
  * @param {object} [data.gpu] /tower/gpu
  * @param {object} [data.inbox] /tower/ops-inbox
  * @param {object} [data.packages] /tower/packages
+ * @param {object} [data.chassisFan] /tower/chassis-fan
+ * @param {object} [data.backup] /tower/backup inventory
  * @return {{level: string, items: Array<object>}} verdict plus findings
  */
 export function assess(data) {
@@ -129,6 +131,18 @@ export function assess(data) {
 		add(overThreshold(gpu.temp_c, 80, 90), `${gpu.name} ${gpu.temp_c}°C`, 'GPU running hot', 'gpu')
 	}
 
+	for (const fan of data.chassisFan?.fans || []) {
+		const role = String(fan.role || '').toLowerCase()
+		if (role && role !== 'unused' && Number(fan.rpm) === 0) {
+			add(WARN, `${fan.header || fan.name || fan.fan || 'fan'} stopped`,
+				`role ${role} reports 0 RPM`, 'fans')
+		}
+		if (role === 'pump' && fan.pwm != null && Number(fan.pwm) < 255) {
+			add(WARN, `${fan.header || fan.name || 'pump'} PWM below full`,
+				`pump PWM ${fan.pwm} (expected 255)`, 'fans')
+		}
+	}
+
 	const recent = data.inbox?.inbox_recent || []
 	const critical = data.inbox?.critical_recent
 		|| recent.filter((row) => ['crit', 'critical'].includes(String(row.status || '').toLowerCase()))
@@ -150,6 +164,19 @@ export function assess(data) {
 			? 'TimescaleDB backup failed'
 			: (summary || 'Backup check not OK')
 		add(WARN, title, summary && summary !== title ? summary : (backup.name || backup.status || ''), 'backup')
+	}
+
+	const inventory = data.backup
+	if (inventory && typeof inventory === 'object' && (inventory.items || inventory.count != null || inventory.newest != null)) {
+		const itemsList = inventory.items || []
+		const newest = inventory.newest
+		const ageHours = newest?.age_hours
+		if (!itemsList.length && !newest) {
+			add(WARN, 'Backup inventory empty', 'no backup files found on disk', 'backup')
+		} else if (ageHours != null && Number(ageHours) > 48) {
+			add(WARN, 'Newest backup older than 48 h',
+				`${newest.name || 'backup'} · ${ageHours} h old`, 'backup')
+		}
 	}
 
 	const updates = (data.packages?.packages || []).length
