@@ -533,7 +533,10 @@ def host_gpu() -> dict[str, Any]:
 
 def _mount_rows() -> list[dict[str, Any]]:
     rows = []
-    text = _read_text(_proc_file("mounts"))
+    # PID 1's table is the host's (pid:host); the plain /hostproc/mounts resolves
+    # to the sidecar's own namespace and shows the container overlay for "/".
+    host_init = HOST_PROC / "1" / "mounts"
+    text = _read_text(host_init) or _read_text(_proc_file("mounts"))
     for line in text.splitlines():
         parts = line.split()
         if len(parts) < 4:
@@ -1343,8 +1346,6 @@ def docker_image_remove(body: dict[str, Any]) -> dict[str, Any]:
             continue
         image_name, image_id = parts[2], parts[3]
         if ref == image_name or ref in image_id or image_id.endswith(ref) or ref.endswith(image_id):
-            blockers.append({"id": parts[0], "name": parts[1], "image": image_name})
-        elif ref.split(":")[0] == image_name.split(":")[0] and ":" in ref and ref == image_name:
             blockers.append({"id": parts[0], "name": parts[1], "image": image_name})
     if blockers:
         return {

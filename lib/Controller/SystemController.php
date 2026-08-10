@@ -11,7 +11,6 @@ declare(strict_types=1);
 namespace OCA\NcTower\Controller;
 
 use OCP\AppFramework\Controller;
-use OCP\AppFramework\Http\Attribute\AdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\IL10N;
 use OCP\IConfig;
@@ -64,7 +63,6 @@ class SystemController extends Controller {
 
     
     
-    #[AdminRequired]
     #[NoCSRFRequired]
     public function storage(): DataResponse {
         try {
@@ -112,7 +110,6 @@ class SystemController extends Controller {
         }
     } 
     
-    #[AdminRequired]
     #[NoCSRFRequired]
     public function sqlinfo(): DataResponse {
         try {
@@ -201,7 +198,6 @@ class SystemController extends Controller {
         return $sapi !== '' ? ('php-' . $sapi) : 'unknown';
     }
  
-    #[AdminRequired]
     #[NoCSRFRequired]
     public function systeminfo(): DataResponse {
         try {
@@ -261,42 +257,6 @@ class SystemController extends Controller {
         }
     }
 
-    #[AdminRequired]
-    #[NoCSRFRequired]
-    public function widgetinfo(): DataResponse {
-        try {
-            $ncinfo = $this->myService->getNCInfo();
-            $updateerenabled = $this->myService->isupdaterenabled();
-            $ncupdate = $this->getSystemStatus();
-            $updatechannel = $this->config->getSystemValue('updater.release.channel');
-            if (($updatechannel === null) || $updatechannel === '') {
-                $updatechannel = Server::get(ServerVersion::class)->getChannel();
-            }
-
-            return new DataResponse([
-                'nc_version' => $ncinfo['nc_version'],
-                'nc_installation_type' => $this->detectEnvironment(),
-                'nc_datadirectory' => $ncinfo['datadirectory'],
-                'nc_updateAvailable' => $ncupdate['updateAvailable'],
-                'nc_updateCheckAvailable' => $ncupdate['updateCheckAvailable'] ?? false,
-                'nc_currentVersion' => $ncupdate['currentVersion'],
-                'nc_updateVersion' => $ncupdate['updateVersion'],
-                'nc_currentVersionimplode' => $ncupdate['currentVersionimplode'],
-                'nc_updatechannel' => $updatechannel,
-                'webUpdaterEnabled' => $updateerenabled['webUpdaterEnabled'],
-                'updaterEnabled' => $updateerenabled['updaterEnabled'],
-            ]);
-        } catch (\Throwable $e) {
-            $this->logger->error(
-                'NcTower: FATAL ERROR or EXCEPTION in DataController->systeminfo: ' . $e->getMessage() . "\n" . $e->getTraceAsString(),
-                ['app' => 'nc_tower']
-            );
-            return new DataResponse([
-                'db' => -1,
-            ], 500);
-        }
-    }
-    
     /**
      * Stub — OC\Updater\VersionCheck is private. Surface installed version only;
      * operators use Settings → Overview for official update status.

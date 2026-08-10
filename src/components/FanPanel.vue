@@ -36,6 +36,9 @@
 					<span class="nc-tower-chip">{{ pwmLabel(fan) }}</span>
 					<span class="nc-tower-chip">{{ fan.mode_label || modeLabel(fan.mode) }}</span>
 				</div>
+				<Sparkline v-if="(rpmSeries[fan.header || `FAN${fan.index}`] || []).length > 1"
+					:samples="rpmSeries[fan.header || `FAN${fan.index}`]"
+					:label="`${fan.header || fan.index} RPM, last hour`" />
 
 				<template v-if="fan.role === 'pump'">
 					<p class="nc-tower-muted">
@@ -126,6 +129,7 @@ import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
 import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
 import NcTextField from '@nextcloud/vue/dist/Components/NcTextField.js'
 import ConfirmDialog from './ConfirmDialog.vue'
+import Sparkline from './Sparkline.vue'
 
 import { get, post } from '../services/api.js'
 
@@ -150,7 +154,7 @@ const MODE_LABELS = {
  */
 export default {
 	name: 'FanPanel',
-	components: { ConfirmDialog, NcButton, NcNoteCard, NcTextField },
+	components: { ConfirmDialog, Sparkline, NcButton, NcNoteCard, NcTextField },
 	data() {
 		return {
 			confirm: { open: false, title: '', message: '', confirmLabel: 'Apply', phrase: '', danger: false },
@@ -159,6 +163,7 @@ export default {
 			busy: false,
 			error: '',
 			chassisFan: {},
+			fanHistory: {},
 			gpuFan: {},
 			systemd: {},
 			draftPct: {},
@@ -187,6 +192,21 @@ export default {
 			}
 			const unit = (this.systemd.units || []).find((u) => u.unit === 'fancontrol.service')
 			return unit ? /active|running/i.test(String(unit.active || unit.sub || '')) : false
+		},
+		rpmSeries() {
+			// header -> [rpm...] over the last hour, so each fan card shows its
+			// own trend. Populated from /tower/chassis-fan/history (previously
+			// fetched by nothing — this is the consumer that earns the endpoint).
+			const out = {}
+			for (const sample of this.fanHistory.samples || []) {
+				for (const fan of sample.fans || []) {
+					const key = fan.header || `FAN${fan.index}`
+					if (fan.rpm != null) {
+						(out[key] = out[key] || []).push(Number(fan.rpm))
+					}
+				}
+			}
+			return out
 		},
 		summary() {
 			const n = this.chassisFans.length
@@ -264,14 +284,16 @@ export default {
 			this.error = ''
 			this.$emit('loading', true)
 			try {
-				const [chassis, gpu, systemd] = await Promise.all([
+				const [chassis, gpu, systemd, history] = await Promise.all([
 					get('/tower/chassis-fan'),
 					get('/tower/fan').catch((err) => ({ unavailable: true, reason: err.message })),
 					get('/tower/systemd').catch(() => ({})),
+					get('/tower/chassis-fan/history', { minutes: 60 }).catch(() => ({ samples: [] })),
 				])
 				this.chassisFan = chassis || {}
 				this.gpuFan = gpu || {}
 				this.systemd = systemd || {}
+				this.fanHistory = history || {}
 			} catch (err) {
 				this.error = err.message || 'Fan refresh failed'
 				this.$emit('error', this.error)

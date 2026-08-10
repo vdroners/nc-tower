@@ -260,6 +260,14 @@
 				<span class="nc-tower-chip">pkg {{ host.package_temp_c != null ? `${host.package_temp_c}°C` : '—' }}</span>
 				<span class="nc-tower-chip">up {{ fmt.duration(host.uptime_s) }}</span>
 			</div>
+			<div class="nc-tower-meterrow">
+				<span class="nc-tower-meterrow__label">Memory</span>
+				<UsageBar v-if="memPct != null" :percent="memPct" />
+				<span v-else class="nc-tower-muted">—</span>
+				<span class="nc-tower-meterrow__label">Swap</span>
+				<UsageBar v-if="swapPct != null" :percent="swapPct" :warn="25" :crit="60" />
+				<span v-else class="nc-tower-muted">—</span>
+			</div>
 			<DataTable :columns="diskColumns" :rows="host.disks || []" row-key="path" empty-text="No disks">
 				<template #cell-used_pct="{ row }">
 					<UsageBar v-if="!row.error" :percent="row.used_pct" />
@@ -347,7 +355,13 @@
 				<DataTable :columns="gpuColumns" :rows="gpu.gpus || []" row-key="uuid" empty-text="No GPUs">
 					<template #cell-util_pct="{ row }"><UsageBar :percent="row.util_pct" :warn="90" :crit="99" /></template>
 					<template #cell-mem_used_mib="{ row }">{{ row.mem_used_mib }} / {{ row.mem_total_mib }} MiB</template>
-					<template #cell-temp_c="{ row }">{{ row.temp_c }}°C</template>
+					<template #cell-temp_c="{ row }">
+							<div class="nc-tower-cpu-cell">
+								<span>{{ row.temp_c }}°C</span>
+								<Sparkline v-if="(gpuTempTrends[row.uuid] || []).length > 1"
+									:samples="gpuTempTrends[row.uuid]" :max="100" :label="`${row.name} temperature`" />
+							</div>
+						</template>
 					<template #cell-power_draw_w="{ row }">{{ row.power_draw_w }} / {{ row.power_limit_w }} W</template>
 				</DataTable>
 				<h4 v-if="(gpu.processes || []).length" class="nc-tower-subhead">Compute processes</h4>
@@ -826,6 +840,7 @@ export default {
 			appUpdates: {},
 			showProbes: false,
 			trends: {},
+			gpuTempTrends: {},
 			sidecarDown: false,
 			statsOpen: {},
 			smartAttrs: {},
@@ -1289,6 +1304,16 @@ export default {
 			}
 			return rows.filter((row) => String(row.line || '').toLowerCase().includes(query)).reverse()
 		},
+		memPct() {
+			const total = this.kb(this.host.mem_total)
+			const avail = this.kb(this.host.mem_available)
+			return total ? Math.round((1 - avail / total) * 1000) / 10 : null
+		},
+		swapPct() {
+			const total = this.kb(this.host.swap_total)
+			const free = this.kb(this.host.swap_free)
+			return total ? Math.round((1 - free / total) * 1000) / 10 : null
+		},
 		stackRows() {
 			return this.stacks.stacks || []
 		},
@@ -1454,6 +1479,10 @@ export default {
 				this.$set(this.loading, 'cron', false)
 			}
 		},
+		kb(value) {
+			const m = String(value || '').match(/(\d+)\s*kB/i)
+			return m ? Number(m[1]) : 0
+		},
 		recordTrends(rows) {
 			const next = { ...this.trends }
 			for (const row of rows) {
@@ -1464,6 +1493,17 @@ export default {
 				next[row.name] = [...(next[row.name] || []), row.cpu_pct].slice(-30)
 			}
 			this.trends = next
+		},
+		recordGpuTemp(gpus) {
+			// Same in-memory ring buffer as container CPU — nothing on the host
+			// records per-GPU temperature at Tower's cadence.
+			const next = { ...this.gpuTempTrends }
+			for (const g of gpus) {
+				if (g.uuid && g.temp_c != null) {
+					next[g.uuid] = [...(next[g.uuid] || []), Number(g.temp_c)].slice(-30)
+				}
+			}
+			this.gpuTempTrends = next
 		},
 		async fetchAppUpdates() {
 			// The /appupdates PHP route is a stub (appscount 0); the real list
@@ -1482,6 +1522,9 @@ export default {
 				this[key] = await get(path, params)
 				if (key === 'containers') {
 					this.recordTrends(this[key].containers || [])
+				}
+				if (key === 'gpu') {
+					this.recordGpuTemp(this[key].gpus || [])
 				}
 				if (path.startsWith('/tower/')) {
 					this.sidecarDown = false
@@ -2056,6 +2099,24 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.nc-tower-meterrow {
+	display: grid;
+	grid-template-columns: max-content 1fr max-content 1fr;
+	align-items: center;
+	gap: 6px 10px;
+	margin: 4px 0 10px;
+	max-width: 640px;
+
+	&__label {
+		color: var(--color-text-maxcontrast);
+		font-size: 0.85em;
+	}
+}
+
+@media (max-width: 720px) {
+	.nc-tower-meterrow { grid-template-columns: max-content 1fr; }
+}
+
 .nc-tower-jump {
 	display: flex;
 	flex-wrap: wrap;

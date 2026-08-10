@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "sidecar"))
 
 from inventory import (  # noqa: E402
+    collect_posture,
     decode_taint,
     parse_dmidecode_memory,
     parse_ethtool,
@@ -167,6 +168,28 @@ class SmartHistoryTests(unittest.TestCase):
         self.assertEqual(rows[0]["temp_max"], 42)
         self.assertEqual(rows[0]["temp_now"], 42)
         self.assertEqual(rows[0]["reallocated"], 1)
+
+
+class PostureTests(unittest.TestCase):
+    """`who`'s trailing field is multi-word ("(login screen)"). Guards both the
+    join and — implicitly — that the local isn't named `host`, which would
+    shadow the command-runner and break every later posture call."""
+
+    def _run_stub(self, who_out):
+        def run(argv, timeout=15, **kw):
+            joined = " ".join(argv)
+            if joined.endswith("who") or joined == "who":
+                return {"exit": 0, "stdout": who_out, "stderr": ""}
+            # last / any other command: succeed with no output
+            return {"exit": 0, "stdout": "", "stderr": ""}
+        return run
+
+    def test_multiword_from_field(self):
+        who = "vdroners seat0        2026-08-01 10:42 (login screen)\n"
+        out = collect_posture(run=self._run_stub(who), nsenter_bin=lambda: None, service_targets=[])
+        self.assertTrue(out.get("ok", True) is not False, out.get("reason"))
+        self.assertEqual(out["users"][0]["host"], "(login screen)")
+        self.assertEqual(out["users"][0]["user"], "vdroners")
 
 
 if __name__ == "__main__":

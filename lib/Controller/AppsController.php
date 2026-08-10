@@ -14,7 +14,6 @@ use OCA\NcTower\Service\MyService;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
-use OCP\AppFramework\Http\Attribute\AdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\JSONResponse;
@@ -69,7 +68,6 @@ class AppsController extends Controller {
 		$this->l = $l;
 	}
 
-	#[AdminRequired]
 	#[NoCSRFRequired]
 	public function appsinfo(): DataResponse {
 		try {
@@ -247,22 +245,8 @@ class AppsController extends Controller {
 	}
 
 	/**
-	 * Legacy PHP stub — live updates use client-side appstore OCS.
-	 */
-	public function updateapp(string $who): JSONResponse {
-		return new JSONResponse([
-			'data' => [
-				'message' => $this->l->t('Use NC Tower Apps (appstore OCS) or Settings → Apps.'),
-				'appid' => $who,
-				'available' => false,
-			],
-		], Http::STATUS_NOT_IMPLEMENTED);
-	}
-
-	/**
 	 * Legacy stub kept for old clients. Vue uses src/services/appstoreOcs.js.
 	 */
-	#[AdminRequired]
 	#[NoCSRFRequired]
 	public function getAppsWithUpdates(): DataResponse {
 		return new DataResponse([
@@ -273,13 +257,6 @@ class AppsController extends Controller {
 		]);
 	}
 
-	#[AdminRequired]
-	#[NoCSRFRequired]
-	public function listCategories(): JSONResponse {
-		return new JSONResponse([]);
-	}
-
-	#[AdminRequired]
 	#[NoCSRFRequired]
 	public function isnoti(): DataResponse {
 		$ncinfo = $this->myService->getNCInfo();
@@ -295,25 +272,6 @@ class AppsController extends Controller {
 
 		return new DataResponse([
 			'isnoti' => $isnoti,
-		]);
-	}
-
-	#[AdminRequired]
-	#[NoCSRFRequired]
-	public function islogcleaner(): DataResponse {
-		$ncinfo = $this->myService->getNCInfo();
-		$parts = explode('.', $ncinfo['nc_version']);
-		$version = (int)$parts[0];
-		if ($version < 32) {
-			$enabledapps = $this->appManager->getEnabledAppsForUser($this->userSession->getUser());
-		} else {
-			$enabledapps = $this->appManager->getEnabledApps();
-		}
-
-		$islogcleaner = in_array('logcleaner', $enabledapps, true) ? 'true' : 'false';
-
-		return new DataResponse([
-			'islogcleaner' => $islogcleaner,
 		]);
 	}
 }

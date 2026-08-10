@@ -1,5 +1,57 @@
 # Changelog
 
+## [1.18.0] - 2026-08-10
+
+Fixes the remaining audit findings 1.17.0 left open (its "notes" plus the deferred UI).
+Investigating one note surfaced a real hardening item, which leads.
+Plan: [`docs/plans/nc-tower-1.18-remaining-findings.md`](docs/plans/nc-tower-1.18-remaining-findings.md).
+
+### Security — explicit admin enforcement (hardening, not a live fix)
+- NC 34's SecurityMiddleware only enforces admin via `#[AuthorizedAdminSetting]`/
+  `SubAdminRequired`; a plain controller method is reachable by any logged-in user. NC Tower's
+  `#[AdminRequired]` attribute **does not exist** in NC (it was inert), and `TowerController`
+  (host-root sidecar proxy) carried no admin attribute at all — the only gate was the
+  boot-time `enableAppForGroups(['admin'])`. Verified that gate does hold today
+  (`isEnabledForUser` is false for non-admins, so this was **defence-in-depth, not a live
+  hole**), but implicit whole-app gating is wrong for a host-root surface.
+- New `ForbiddenMiddleware` enforces `isAdmin` in `beforeController` for every NC Tower
+  controller (forget-proof, app-scoped), mapping denial to 403; inert `#[AdminRequired]`
+  removed. Functionally proven: admin allowed, non-admin/anonymous denied, 403 JSON, other
+  exceptions rethrown. New gate **G36** asserts the middleware is present, registered, and
+  enforcing, and that no inert attribute remains.
+
+### Fixed — data correctness
+- Host › Security "Logged in" **From** column showed `(login` — the `who` trailing field is
+  multi-word (`(login screen)`); now joined. (The fix first introduced a variable that
+  shadowed the command-runner and broke the whole posture panel — caught by live check, fixed,
+  and locked with a `collect_posture` regression test.)
+- Host watched-path mounts labelled `/` as `overlay` (the container's root); now reads the
+  host mount table (`/hostproc/1/mounts`), so `/` shows `/dev/nvme0n1p2 ext4`.
+
+### Changed — cleanup
+- Removed 5 dead upstream Admin Cockpit routes with no caller (`/appsasc`, `/updateapp`,
+  `/islogcleaner`, `/widgetinfo`, `/userlist` GET+POST) plus their controller methods and the
+  `userlist` template. Kept `/isnoti` (used by the Users notify gate). Assessed each for
+  intent first — all were relics, not unfinished features.
+- Removed the stray `#[NoCSRFRequired]`/`#[FrontpageRoute(POST,'/')]` on the non-routed
+  `Helper` class (the latter a phantom route) and an unreachable `elif` in `docker_image_remove`.
+- `info.xml` `min-version` 31 → 34: the app's only app-update path is the NC≥34 OCS API and
+  `max-version` was already 34, so the manifest now matches reality.
+
+### Added — UI (the 1.17.0 deferrals)
+- Ops "Host and storage" gains mem/swap **UsageBars**; GPU **temperature sparkline** (in-memory
+  ring buffer like container CPU); and a per-fan **RPM sparkline** in FanPanel fed by
+  `/tower/chassis-fan/history` — the consumer that was missing, so that endpoint (a genuine
+  unfinished feature, unlike the discarded relics) now earns its place rather than being dropped.
+
+### Still deferred
+- Moving the container Stats / SMART-attribute panels inline under the clicked row (#11) —
+  the one item that genuinely needs a browser to verify; held again rather than shipped blind.
+
+### Verification
+- Preflight 88, api-gates 90, route-gates 22, vitest 72, sidecar unittests 28 — all green.
+  Sidecar rebuilt + recreated from the host shell; no container crashed; no `nc_tower` log errors.
+
 ## [1.17.0] - 2026-08-10
 
 Verification-driven fix pass. A five-inspector read-only audit (each claimed defect

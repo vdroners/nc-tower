@@ -13,6 +13,7 @@ use OCP\INavigationManager;
 use OCP\IConfig;
 use OCP\IURLGenerator;
 use OCA\NcTower\Dashboard\NcTowerWidget;
+use OCA\NcTower\Middleware\ForbiddenMiddleware;
 
 class Application extends App implements IBootstrap {
 	public const APP_ID = 'nc_tower';
@@ -24,6 +25,8 @@ class Application extends App implements IBootstrap {
 	public function register(IRegistrationContext $context): void {
 		$context->registerNotifierService(\OCA\NcTower\Notification\Notifier::class);
 		$context->registerDashboardWidget(NcTowerWidget::class);
+		// Per-endpoint admin enforcement for a host-root app — see the middleware.
+		$context->registerMiddleware(ForbiddenMiddleware::class);
 	}
 
 	public function boot(IBootContext $context): void {

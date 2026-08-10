@@ -82,28 +82,4 @@ class PageController extends Controller {
 	public function host(): TemplateResponse {
 		return new TemplateResponse(Application::APP_ID, 'host');
 	}
-
-	#[NoCSRFRequired]
-	public function userlistget(string $who = '', string $guser = '', string $gid = ''): TemplateResponse {
-		if (empty($guser)) {
-			$response = $this->userController->usercount();
-			$data = $response->getData();
-			$guser = json_encode($data['users'] ?? []);
-		}
-		return $this->userlist($this->l->t('all users'), $guser, $this->l->t('all users'));
-	}
-
-	#[NoCSRFRequired]
-	#[OpenAPI(OpenAPI::SCOPE_IGNORE)]
-	public function userlist(string $who = '', string $guser = '', string $gid = ''): TemplateResponse {
-		return new TemplateResponse(
-			Application::APP_ID,
-			'userlist',
-			[
-				'who' => $who,
-				'guser' => $guser,
-				'gid' => $gid,
-			]
-		);
-	}
 }

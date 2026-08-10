@@ -10,14 +10,14 @@ declare(strict_types=1);
 
 namespace OCA\NcTower\Controller;
 
-use OCP\AppFramework\Http\Attribute\FrontpageRoute;
-use OCP\AppFramework\Http\Attribute\NoAdminRequired;
-use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\IL10N;
 use OCP\IConfig;
 use OCP\AppFramework\Db\TTransactional;
 use OCP\IDBConnection;
 
+// Helper is a plain service, not a routed controller. The route/CSRF attributes
+// that used to sit on its constructor were inert noise — and #[FrontpageRoute]
+// there was a phantom POST-/ route waiting to be scanned into existence.
 class Helper
 {
     use TTransactional;
@@ -26,8 +26,6 @@ class Helper
     private IConfig $config;
     private $appName;
     private $l;
-    #[NoCSRFRequired]
-    #[FrontpageRoute(verb: 'POST', url: '/')]
 
    public function __construct(IConfig $config, IL10N $l, $appName, IDBConnection $db){
         $this->config = $config;

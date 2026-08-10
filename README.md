@@ -1,6 +1,6 @@
 # NC Tower
 
-**Version 1.17.0**
+**Version 1.18.0**
 
 NC Tower is the Nextcloud orchestrator for this GCS host: Nextcloud admin, Docker
 day-ops (Portainer-style container groups), host inventory with hardware
@@ -25,9 +25,11 @@ and `nsenter` into PID 1's mount namespace. Guard it accordingly: it lives in
 `sidecar/.env` (mode 0600) and in Nextcloud's `config.php`, and `make deploy` deliberately
 removes it from the deployed app tree so it is never sitting in the web root.
 
-Access control is **by omission**: Nextcloud requires admin for every controller method
-unless one opts out with `#[NoAdminRequired]`. None do, and gate G21 fails the build if
-one ever appears.
+Access control is **explicit**: a `ForbiddenMiddleware` checks `isAdmin` in
+`beforeController` for every NC Tower controller and returns 403 otherwise. This does not
+rely on Nextcloud's per-method default (which, on NC 34, is merely *logged-in*, not admin)
+nor on the app being enabled only for the admin group. Gate G36 asserts the middleware is
+registered and enforcing; G21 asserts no `#[NoAdminRequired]` slips in.
 
 ## Tabs
 

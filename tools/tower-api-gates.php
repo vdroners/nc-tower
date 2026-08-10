@@ -118,6 +118,28 @@ foreach (glob("$remote/lib/Controller/*.php") ?: [] as $file) {
 }
 gate('G21', 'no active NoAdminRequired in any controller' . ($stray ? ' (' . implode(', ', $stray) . ')' : ''), $stray === []);
 
+// --- G36 explicit admin enforcement -----------------------------------------
+// NC 34's SecurityMiddleware does NOT enforce admin by omission, and
+// #[AdminRequired] is not a real attribute. A host-root app must enforce admin
+// itself: the ForbiddenMiddleware checks isAdmin in beforeController for every
+// controller, registered in Application. Assert all three facts, and that the
+// inert attribute is gone.
+$mw = @file_get_contents("$remote/lib/Middleware/ForbiddenMiddleware.php") ?: '';
+gate('G36', 'ForbiddenMiddleware present', $mw !== '');
+gate('G36', 'middleware enforces admin in beforeController',
+	str_contains($mw, 'function beforeController') && str_contains($mw, 'isAdmin(')
+	&& str_contains($mw, 'ForbiddenException'));
+$appPhp = @file_get_contents("$remote/lib/AppInfo/Application.php") ?: '';
+gate('G36', 'middleware registered', str_contains($appPhp, 'registerMiddleware(ForbiddenMiddleware::class)'));
+$inert = [];
+foreach (glob("$remote/lib/Controller/*.php") ?: [] as $file) {
+	$body = @file_get_contents($file) ?: '';
+	if (preg_match('/#\[AdminRequired\]|Attribute\\\\AdminRequired/', $body)) {
+		$inert[] = basename($file);
+	}
+}
+gate('G36', 'no inert #[AdminRequired] left' . ($inert ? ' (' . implode(', ', $inert) . ')' : ''), $inert === []);
+
 // --- G22 dead weight --------------------------------------------------------
 $dead = [];
 foreach (['main', 'apps', 'system', 'user', 'ops'] as $old) {

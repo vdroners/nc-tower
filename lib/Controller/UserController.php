@@ -12,7 +12,6 @@ namespace OCA\NcTower\Controller;
 
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
-use OCP\AppFramework\Http\Attribute\AdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\IL10N;
 use OCP\IConfig;
@@ -64,7 +63,6 @@ class UserController extends Controller {
         $this->l = $l;
     }
 
-    #[AdminRequired]
     #[NoCSRFRequired]
     public function usercount(): DataResponse {
         try {
@@ -240,7 +238,6 @@ class UserController extends Controller {
         }
     }
     
-    #[AdminRequired]
     #[NoCSRFRequired]
     public function edituser($who): DataResponse {
         try {
@@ -344,7 +341,6 @@ class UserController extends Controller {
 		   ]);
     }
     
-    #[AdminRequired]
     #[NoCSRFRequired]
     public function userexists($who): DataResponse {
             return new DataResponse([

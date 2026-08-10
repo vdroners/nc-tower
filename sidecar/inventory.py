@@ -548,12 +548,17 @@ def collect_posture(
         for line in (who_r.get("stdout") or "").splitlines():
             parts = line.split()
             if len(parts) >= 2:
+                # The trailing field can be multi-word — "(login screen)", a
+                # bracketed X display, or a hostname — so join the remainder
+                # rather than taking parts[4], which rendered just "(login".
+                # NB: not named `host` — that is the command-runner helper above.
+                from_field = " ".join(parts[4:]).strip() if len(parts) >= 5 else None
                 users.append(
                     {
                         "user": parts[0],
                         "tty": parts[1],
                         "since": " ".join(parts[2:4]) if len(parts) >= 4 else None,
-                        "host": parts[4] if len(parts) >= 5 else None,
+                        "host": from_field or None,
                     }
                 )
     else:
