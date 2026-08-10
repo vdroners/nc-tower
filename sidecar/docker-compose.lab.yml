@@ -33,6 +33,11 @@ services:
       NC_TOWER_CONTAINER_DENY: "${NC_TOWER_CONTAINER_DENY:-nc_tower_sidecar,cloud_*,portainer,wg-easy,talk_*,*openclaw*}"
       NC_TOWER_SYSTEMD_ALLOW: "${NC_TOWER_SYSTEMD_ALLOW:-docker.service,openclaw-gateway.service,fancontrol.service,cron.service,ssh.service}"
       NC_TOWER_IMAGE_PULL_ALLOW: "${NC_TOWER_IMAGE_PULL_ALLOW:-veterandroners/*,ghcr.io/vdroners/*}"
+      # These three used to be app.py source defaults; moved here so the shipped
+      # source is lab-neutral while this deployment behaves exactly as before.
+      NC_TOWER_OLLAMA_URL: "${NC_TOWER_OLLAMA_URL:-http://10.0.0.84:11434}"
+      NC_TOWER_SYSTEMD_USER: "${NC_TOWER_SYSTEMD_USER:-vdroners}"
+      NC_TOWER_SYSTEMD_USER_UNITS: "${NC_TOWER_SYSTEMD_USER_UNITS:-openclaw-gateway.service}"
       LD_LIBRARY_PATH: /usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu
     volumes:
       - ./app.py:/app/app.py:ro

@@ -7,7 +7,20 @@
 			:busy="refreshingAll"
 			@refresh="refreshAll" />
 
+		<NcNoteCard v-if="sidecarDown" type="error">
+			The NC Tower sidecar is not answering, so the host and Docker sections below are
+			empty. Check the <code>nc_tower_sidecar</code> container and its token.
+		</NcNoteCard>
+
 		<AttentionList :items="verdict.items" />
+
+		<!-- Jump bar: the sections form a long scroll; these anchors resolve now
+		     that Section carries an id, and each dot shows where to look. -->
+		<nav class="nc-tower-jump" aria-label="Ops sections">
+			<a v-for="s in sectionNav" :key="s.id" class="nc-tower-jump__link" :href="`#${s.id}`">
+				<SeverityDot :level="s.severity" />{{ s.label }}
+			</a>
+		</nav>
 
 		<Section id="ops.containers"
 			title="Containers"
@@ -372,14 +385,15 @@
 				<span class="nc-tower-chip">{{ engine.Images ?? '—' }} images</span>
 				<span class="nc-tower-chip">{{ engine.OperatingSystem || '—' }}</span>
 			</div>
-			<TowerChart v-if="dfRows.length"
-				type="bar"
-				:labels="dfRows.map((r) => r.Type)"
-				:datasets="dfDatasets"
-				:height="150"
-				show-legend
-				title="Docker disk usage" />
-			<DataTable :columns="dfColumns" :rows="dfRows" empty-text="No disk usage data" />
+			<!-- Four static categories are a table question, not a chart one; the
+			     reclaimable share reads better as an inline bar than as a second
+			     rendering of the same numbers. -->
+			<DataTable :columns="dfColumns" :rows="dfRows" empty-text="No disk usage data">
+				<template #cell-Reclaimable="{ row }">
+					<UsageBar v-if="row.reclaimable_pct != null" :percent="row.reclaimable_pct" :warn="101" :crit="101" />
+					<span v-else>{{ row.Reclaimable || '—' }}</span>
+				</template>
+			</DataTable>
 		</Section>
 
 		<Section id="ops.images"
@@ -557,7 +571,7 @@
 					<span v-for="nic in (hostNetwork.nic_detail || [])"
 						:key="'nic-' + nic.ifname"
 						class="nc-tower-chip"
-						:class="nic.link === 'yes' || nic.link === true || /yes|up/i.test(String(nic.link || '')) ? 'nc-tower-chip--ok' : 'nc-tower-chip--warn'">
+						:class="nicLinkUp(nic) ? 'nc-tower-chip--ok' : 'nc-tower-chip--warn'">
 						{{ nic.ifname }}
 						{{ nic.speed || nic.Speed || '—' }}
 						{{ nic.duplex || '' }}
@@ -696,7 +710,9 @@
 			<p>Exec in <strong>{{ exec.name }}</strong>. One-shot argv, no shell.</p>
 			<NcTextField :value.sync="exec.raw" label="argv JSON array" placeholder='["ls","-la"]' />
 			<NcNoteCard type="info">
-				Shells and destructive binaries are refused by the sidecar allowlist.
+				Runs one argv in an allowlisted container — no shell is interposed. Common shells
+				and destructive binaries are refused by name, but this is a convenience guard, not
+				a sandbox: anything the container image can run, this can run.
 			</NcNoteCard>
 			<pre v-if="exec.out" class="nc-tower-pre">{{ exec.out }}</pre>
 			<template #actions>
@@ -750,7 +766,6 @@ import DataTable from '../components/DataTable.vue'
 import FanPanel from '../components/FanPanel.vue'
 import JobPanel from '../components/JobPanel.vue'
 import Sparkline from '../components/Sparkline.vue'
-import TowerChart from '../components/TowerChart.vue'
 import OutputDialog from '../components/OutputDialog.vue'
 import Section from '../components/Section.vue'
 import SeverityDot from '../components/SeverityDot.vue'
@@ -758,6 +773,7 @@ import StatusBanner from '../components/StatusBanner.vue'
 import UsageBar from '../components/UsageBar.vue'
 
 import { get, post } from '../services/api.js'
+import { listAppUpdates } from '../services/appstoreOcs.js'
 import { partitionItems, loadSnoozes } from '../services/attentionSnooze.js'
 import fmt from '../services/format.js'
 import { assess, worst } from '../services/health.js'
@@ -770,7 +786,7 @@ export default {
 	name: 'Ops',
 	components: {
 		AttentionList, ConfirmDialog, DataTable, FanPanel, JobPanel, NcTowerIcon, OutputDialog, Section, SeverityDot,
-		Sparkline, StatusBanner, TowerChart, UsageBar,
+		Sparkline, StatusBanner, UsageBar,
 		NcActionButton, NcActions, NcButton, NcCheckboxRadioSwitch, NcDialog, NcNoteCard, NcTextField,
 	},
 	data() {
@@ -810,6 +826,7 @@ export default {
 			appUpdates: {},
 			showProbes: false,
 			trends: {},
+			sidecarDown: false,
 			statsOpen: {},
 			smartAttrs: {},
 			loading: {},
@@ -1030,6 +1047,22 @@ export default {
 		},
 		attentionPartition() {
 			return partitionItems(this.verdict.items, loadSnoozes())
+		},
+		sectionNav() {
+			const sev = this.sev || {}
+			return [
+				{ id: 'ops.containers', label: 'Containers', severity: sev.containers || 'ok' },
+				{ id: 'ops.stacks', label: 'Stacks', severity: 'ok' },
+				{ id: 'ops.host', label: 'Host', severity: sev.host || 'ok' },
+				{ id: 'ops.smart', label: 'SMART', severity: sev.smart || 'ok' },
+				{ id: 'ops.gpu', label: 'GPU', severity: sev.gpu || 'ok' },
+				{ id: 'ops.fans', label: 'Fans', severity: 'ok' },
+				{ id: 'ops.engine', label: 'Engine', severity: 'ok' },
+				{ id: 'ops.host-network', label: 'Network', severity: 'ok' },
+				{ id: 'ops.ollama', label: 'Ollama', severity: 'ok' },
+				{ id: 'ops.backup', label: 'Backup', severity: sev.backup || 'ok' },
+				{ id: 'ops.inbox', label: 'Inbox', severity: sev.inbox || 'ok' },
+			]
 		},
 		bannerLevel() {
 			return worst(...this.attentionPartition.visible.map((item) => item.severity))
@@ -1259,22 +1292,15 @@ export default {
 		stackRows() {
 			return this.stacks.stacks || []
 		},
-		dfDatasets() {
-			const bytes = (text) => {
-				const m = String(text || '').match(/([\d.]+)\s*([KMGT]?B)/i)
-				if (!m) {
-					return 0
-				}
-				const unit = { B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }
-				return (parseFloat(m[1]) * (unit[m[2].toUpperCase()] || 1)) / 1024 ** 3
-			}
-			return [
-				{ label: 'Size (GB)', data: this.dfRows.map((r) => bytes(r.Size)) },
-				{ label: 'Reclaimable (GB)', data: this.dfRows.map((r) => bytes(r.Reclaimable)) },
-			]
-		},
 		dfRows() {
-			return (this.df.rows || []).filter((row) => typeof row === 'object')
+			// docker df writes Reclaimable as "1.2GB (45%)"; pull the percent out
+			// for the inline bar and leave the string for the fallback cell.
+			return (this.df.rows || [])
+				.filter((row) => typeof row === 'object')
+				.map((row) => {
+					const m = String(row.Reclaimable || '').match(/\((\d+)%\)/)
+					return { ...row, reclaimable_pct: m ? Number(m[1]) : null }
+				})
 		},
 		imageRows() {
 			const list = Array.isArray(this.images.images) ? this.images.images : []
@@ -1383,7 +1409,7 @@ export default {
 		p.add('packages', () => this.fetch('packages', '/tower/packages'), 300000)
 		// Nextcloud's own health feeds the same verdict banner.
 		p.add('system', () => this.fetch('system', '/systeminfo'), 300000)
-		p.add('appUpdates', () => this.fetch('appUpdates', '/appupdates'), 300000)
+		p.add('appUpdates', () => this.fetchAppUpdates(), 300000)
 		p.start()
 	},
 	beforeDestroy() {
@@ -1439,6 +1465,16 @@ export default {
 			}
 			this.trends = next
 		},
+		async fetchAppUpdates() {
+			// The /appupdates PHP route is a stub (appscount 0); the real list
+			// comes from the appstore OCS API the browser can reach — same source
+			// Home uses — so the Ops verdict now agrees with the Home card.
+			try {
+				this.appUpdates = await listAppUpdates()
+			} catch (error) {
+				this.appUpdates = { available: false, apps: [], appscount: 0 }
+			}
+		},
 		async fetch(key, path, params, loadingKey) {
 			const slot = loadingKey || key
 			this.$set(this.loading, slot, true)
@@ -1447,10 +1483,23 @@ export default {
 				if (key === 'containers') {
 					this.recordTrends(this[key].containers || [])
 				}
+				if (path.startsWith('/tower/')) {
+					this.sidecarDown = false
+				}
 				this.$set(this.errors, slot, '')
 				this.updatedAt = new Date().toLocaleTimeString()
 			} catch (error) {
-				this.$set(this.errors, slot, error.message)
+				// One root cause, one banner: when the sidecar is unreachable, set
+				// the page-level flag and leave the section error blank rather than
+				// painting ~25 identical 502s down the page.
+				const sidecarGone = path.startsWith('/tower/')
+					&& (error.data?.error === 'sidecar_unavailable' || error.status === 502)
+				if (sidecarGone) {
+					this.sidecarDown = true
+					this.$set(this.errors, slot, '')
+				} else {
+					this.$set(this.errors, slot, error.message)
+				}
 			} finally {
 				this.$set(this.loading, slot, false)
 			}
@@ -1813,7 +1862,10 @@ export default {
 				this.output.text = error.message
 			}
 		},
-		formatInspectSummary(inspect) {
+		formatInspectSummary(raw) {
+			// `docker inspect` returns a one-element array; the summary reads
+			// Config/State/HostConfig, which live on the element, not the array.
+			const inspect = Array.isArray(raw) ? raw[0] : raw
 			if (!inspect || typeof inspect !== 'object') {
 				return ''
 			}
@@ -1836,6 +1888,12 @@ export default {
 				`Cmd: ${JSON.stringify(cfg.Cmd || [])}`,
 			]
 			return lines.join('\n')
+		},
+		nicLinkUp(nic) {
+			// ethtool reports carrier as `link_detected`; the old code read
+			// `nic.link`, which never exists, so every NIC chip showed warn.
+			const value = nic.link_detected != null ? nic.link_detected : nic.link
+			return value === 'yes' || value === true || /^(yes|up)$/i.test(String(value || ''))
 		},
 		showPreview(row) {
 			this.output = { open: true, title: row.file, text: row.preview || '', kind: 'preview', follow: false, name: '' }
@@ -1998,6 +2056,34 @@ export default {
 </script>
 
 <style lang="scss" scoped>
+.nc-tower-jump {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 6px;
+	position: sticky;
+	top: 0;
+	z-index: 5;
+	padding: 6px 0;
+	margin-bottom: 8px;
+	background: var(--color-main-background);
+	border-bottom: 1px solid var(--color-border);
+
+	&__link {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 2px 8px;
+		border-radius: var(--border-radius-pill, 999px);
+		background: var(--color-background-dark);
+		color: var(--color-main-text);
+		text-decoration: none;
+		font-size: 0.82em;
+		white-space: nowrap;
+
+		&:hover { background: var(--color-background-hover); }
+	}
+}
+
 .nc-tower-cpu-cell,
 .nc-tower-life {
 	display: flex;

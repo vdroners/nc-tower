@@ -1,5 +1,68 @@
 # Changelog
 
+## [1.17.0] - 2026-08-10
+
+Verification-driven fix pass. A five-inspector read-only audit (each claimed defect
+adversarially re-checked) found the deployed 1.16.0 sound at the plumbing level but showing
+several wrong or misleading values; this release fixes them and lands the deferred UI polish.
+Plan: [`docs/plans/nc-tower-1.17-verify-fix-improve.md`](docs/plans/nc-tower-1.17-verify-fix-improve.md).
+
+### Fixed — data the UI displayed wrong
+- **SMART sector counters were dropped**, so a degrading drive was invisible: `/dev/sda`
+  reports **1072 reallocated sectors** yet the summary emitted only health/temp/hours. The
+  sidecar now emits reallocated/pending/uncorrectable, and the health rule surfaces them on
+  any drive (pending/uncorrectable = critical) independent of age
+- **GPU per-fan rows never rendered** — FanPanel read `status.fans`; the sidecar emits
+  `gpu_fans`
+- **Every NIC link chip showed warn** — Ops read `nic.link`; ethtool reports `link_detected`
+- **Container Inspect summary was all dashes** — `docker inspect` returns an array; the
+  formatter read `.Config` off the array instead of `[0]`
+- **The temperatures 24 h chart plotted 1970** — `/host/temperatures/history` emits epoch
+  seconds, fed to `new Date()` as milliseconds
+- **The Ops/Widget verdict could never show app updates** — it polled the `/appupdates`
+  stub; it now uses the same OCS source as Home
+
+### Fixed — sidecar read the wrong namespace (host inventory)
+- Network depth (routes, 73 interfaces, listeners), interface **addresses**, and the
+  **hostname** showed the sidecar's own container view, not the host's. `_host_cmd` and
+  `_interfaces` now enter the host mount+uts+net namespaces (`nsenter --target 1`), and the
+  image adds `iproute2`. Requires a sidecar image rebuild + recreate (done on this host)
+- ethtool `firmware`/`bus-info` captured the next line on empty values (`\s` newline bug,
+  same class as the 1.8.2 SMART regex) — parsers are line-anchored with horizontal-only
+  whitespace
+
+### Added — UI/UX
+- Ops **jump bar** with per-section severity dots (its section anchors resolve now that
+  `Section` carries an `id`); a single page-level **sidecar-down banner** replaces ~25
+  duplicate 502s; `DataTable` **loading** state instead of a false "No containers"; phone
+  card-mode **sort control** and the per-section summary now **wraps** instead of hiding
+- Home **updates rollup** card (apt + apps + core) and connectivity notices moved above the
+  fold; Host reordered so Updates/Services precede reference hardware; FanPanel moved off
+  `window.confirm()` onto the themed `ConfirmDialog`; UsageBar gains `role=progressbar` +
+  a non-colour cue; ConfirmDialog autofocuses its phrase field; OutputDialog's Copy gives
+  feedback
+- Global status/chip classes (`--ok/--warn/--crit`, `nc-tower-good/bad/warn`) promoted out
+  of per-component scope so they actually apply everywhere; the redundant Docker-df bar
+  chart dropped in favour of a reclaimable UsageBar in the table
+
+### Changed — App Store readiness + hardening
+- `make appstore` roots the tarball at `nc_tower/` (was `nc_tower-<version>/`, which
+  Nextcloud rejects)
+- Lab identity (`gcs_*` allowlist, `openclaw`, `vdroners`, `veterandroners/*`, the Ollama
+  IP) removed from shipped sidecar **source defaults** and moved to this deployment's compose
+  env — the live box is byte-for-byte unchanged in behaviour, verified
+- Token comparison uses `hmac.compare_digest`; the cron-editor guard rejects control
+  characters (the old "shell metacharacter" guard was cosmetic and wrong-headed — cron
+  commands are shell); the exec dialog's copy no longer overclaims the denylist as a sandbox
+- Gates: **G28** (tarball folder name + no lab identity in source), extended **G25** for the
+  job routes, and regression tests for the SMART sector rule and the ethtool parser.
+  Preflight 88, api-gates 86, route-gates 22, vitest 72, sidecar unittests 27 — all green
+
+### Deferred
+- Mem/swap UsageBars, a GPU-temp sparkline, and moving the container Stats panels inline
+  (improvements #9b/#9c/#11) — visual-polish items held for a pass with a browser to verify
+  against
+
 ## [1.16.0] - 2026-08-04
 
 ### Added

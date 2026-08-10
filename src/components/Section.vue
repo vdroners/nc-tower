@@ -1,5 +1,5 @@
 <template>
-	<section class="nc-tower-section" :class="{ 'nc-tower-section--open': open }">
+	<section :id="id" class="nc-tower-section" :class="{ 'nc-tower-section--open': open }" :data-severity="severity">
 		<header class="nc-tower-section__head" @click="toggle">
 			<button class="nc-tower-section__toggle"
 				type="button"
@@ -176,6 +176,16 @@ export default {
 }
 
 @media (max-width: 720px) {
-	.nc-tower-section__summary { display: none; }
+	// Keep the per-section verdict on phones — it is the scan layer the whole
+	// design leans on. Let it wrap to a second line under the title rather than
+	// hiding it or truncating to nothing.
+	.nc-tower-section__head { flex-wrap: wrap; }
+
+	.nc-tower-section__summary {
+		flex: 1 0 100%;
+		order: 3;
+		white-space: normal;
+		padding-inline-start: 26px;
+	}
 }
 </style>

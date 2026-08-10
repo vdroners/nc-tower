@@ -58,7 +58,11 @@ def _host_cmd(
 ) -> dict[str, Any]:
     nsenter = nsenter_bin()
     if nsenter:
-        return run([nsenter, "--mount=/proc/1/ns/mnt", "--", *argv], timeout=timeout)
+        # Enter the host's mount+uts+net namespaces (pid:host -> /proc/1 is the
+        # host init). --mount alone left `hostname` reporting the container id
+        # and every network command (ip route / ss / ethtool) describing the
+        # sidecar's Docker-bridge namespace instead of the host.
+        return run([nsenter, "--target", "1", "--mount", "--uts", "--net", "--", *argv], timeout=timeout)
     return run(argv, timeout=timeout)
 
 
@@ -207,32 +211,35 @@ def parse_ss_tlnp(text: str) -> list[dict[str, Any]]:
     return rows
 
 
-def parse_ethtool(text: str) -> dict[str, Any]:
+# Every key is anchored to line start with re.M and uses [^\S\n]* (horizontal
+# whitespace only) before the value: `\s*` matches newlines, so an empty value
+# ("firmware-version:\n") would otherwise capture the *next* line's key. Keys
+# are also start-anchored so "version" cannot match inside "firmware-version".
+def _parse_labelled(text: str, fields: tuple[tuple[str, str], ...]) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    for key, pattern in (
-        ("speed", r"Speed:\s*(.+)"),
-        ("duplex", r"Duplex:\s*(.+)"),
-        ("link_detected", r"Link detected:\s*(.+)"),
-        ("port", r"Port:\s*(.+)"),
-    ):
-        m = re.search(pattern, text)
+    for key, label in fields:
+        m = re.search(rf"^\s*{label}:[^\S\n]*(\S.*?)\s*$", text, re.M)
         if m:
             out[key] = m.group(1).strip()
     return out
+
+
+def parse_ethtool(text: str) -> dict[str, Any]:
+    return _parse_labelled(text, (
+        ("speed", "Speed"),
+        ("duplex", "Duplex"),
+        ("link_detected", "Link detected"),
+        ("port", "Port"),
+    ))
 
 
 def parse_ethtool_i(text: str) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    for key, pattern in (
-        ("driver", r"driver:\s*(.+)"),
-        ("version", r"version:\s*(.+)"),
-        ("firmware", r"firmware-version:\s*(.+)"),
-        ("bus_info", r"bus-info:\s*(.+)"),
-    ):
-        m = re.search(pattern, text)
-        if m:
-            out[key] = m.group(1).strip()
-    return out
+    return _parse_labelled(text, (
+        ("driver", "driver"),
+        ("version", "version"),
+        ("firmware", "firmware-version"),
+        ("bus_info", "bus-info"),
+    ))
 
 
 def parse_resolv_conf(text: str) -> dict[str, Any]:

@@ -24,7 +24,7 @@
 				:height="170"
 				y-suffix=" GB"
 				title="Largest accounts by storage" />
-			<DataTable :columns="userColumns" :rows="filteredUsers" row-key="uid" default-sort="uid" empty-text="No users">
+			<DataTable :columns="userColumns" :rows="filteredUsers" row-key="uid" default-sort="uid" :loading="loading.data && !(data.users || []).length" empty-text="No users">
 				<template #cell-isadmin="{ row }">
 					<span v-if="row.isadmin" class="nc-tower-badge">admin</span>
 					<span v-else class="nc-tower-muted">—</span>

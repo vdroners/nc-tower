@@ -111,13 +111,25 @@ export function assess(data) {
 		} else if (disk.health !== 'PASS') {
 			add(WARN, `${disk.device} SMART ${disk.health}`, disk.model || 'health unknown', 'smart')
 		}
+		// Wear counters predict failure regardless of age, so they get their own
+		// finding rather than only escalating the age warning. Pending and
+		// uncorrectable sectors are unreadable data waiting to be remapped —
+		// more urgent than sectors already reallocated cleanly.
+		const reallocated = Number(disk.reallocated || disk.reallocated_sectors || 0)
+		const pending = Number(disk.pending || disk.pending_sectors || 0)
+		const uncorrectable = Number(disk.uncorrectable || 0)
+		if (pending > 0 || uncorrectable > 0) {
+			add(CRIT, `${disk.device} ${pending + uncorrectable} unreadable sector(s)`,
+				`pending ${pending}, uncorrectable ${uncorrectable} — data at risk`, 'smart')
+		} else if (reallocated > 0) {
+			add(WARN, `${disk.device} ${reallocated} reallocated sector(s)`,
+				`${disk.model || 'drive'} is wearing — watch the trend`, 'smart')
+		}
+		const sectorTrouble = reallocated > 0 || pending > 0 || uncorrectable > 0
+
 		// Age alone is informational when SMART is PASS and sector counters
 		// are clean — otherwise a healthy 6-year drive nags forever.
 		const age = overThreshold(disk.power_on_hours, HOURS_5Y, HOURS_7Y)
-		const sectorTrouble = Number(disk.reallocated || 0) > 0
-			|| Number(disk.pending || 0) > 0
-			|| Number(disk.reallocated_sectors || 0) > 0
-			|| Number(disk.pending_sectors || 0) > 0
 		if (age !== OK && (disk.health !== 'PASS' || sectorTrouble)) {
 			add(age, `${disk.device} ${Math.round((disk.power_on_hours || 0) / 8760 * 10) / 10} years powered on`,
 				`${disk.power_on_hours} hours — past nominal service life`, 'smart')

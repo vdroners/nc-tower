@@ -9,6 +9,7 @@ allowlists, and every mutating operation is audited.
 from __future__ import annotations
 
 import fnmatch
+import hmac
 import json
 import os
 import re
@@ -97,13 +98,16 @@ DISK_PATHS = _csv_env(
     "NC_TOWER_DISK_PATHS",
 )
 CONTAINER_ALLOW = _csv_env(
+    # Empty by default: a stock install can mutate nothing until an admin sets
+    # NC_TOWER_CONTAINER_ALLOW. Lab-specific patterns live in the compose env,
+    # not in shipped source.
     "CONTAINER_ALLOW",
-    "gcs_*,mavlink_gateway,gcs_sitl,gcs_simcam,gcs_adsb*",
+    "",
     "NC_TOWER_CONTAINER_ALLOW",
 )
 CONTAINER_DENY = _csv_env(
     "CONTAINER_DENY",
-    "nc_tower_sidecar,cloud_*,portainer,wg-easy,talk_*,*openclaw*",
+    "nc_tower_sidecar,cloud_*,portainer,wg-easy,talk_*",
     "NC_TOWER_CONTAINER_DENY",
 )
 CONTAINER_LOG_ALLOW = _csv_env(
@@ -111,21 +115,21 @@ CONTAINER_LOG_ALLOW = _csv_env(
 ) or list(CONTAINER_ALLOW)
 SYSTEMD_ALLOW = _csv_env(
     "SYSTEMD_ALLOW",
-    "docker.service,openclaw-gateway.service,fancontrol.service,cron.service,ssh.service",
+    "",
     "NC_TOWER_SYSTEMD_ALLOW",
 )
 # User-bus units (linger / --user). Matched by exact unit name.
 SYSTEMD_USER_UNITS = set(
     _csv_env(
         "SYSTEMD_USER_UNITS",
-        "openclaw-gateway.service",
+        "",
         "NC_TOWER_SYSTEMD_USER_UNITS",
     )
 )
-SYSTEMD_USER = os.environ.get("SYSTEMD_USER") or os.environ.get("NC_TOWER_SYSTEMD_USER") or "vdroners"
+SYSTEMD_USER = os.environ.get("SYSTEMD_USER") or os.environ.get("NC_TOWER_SYSTEMD_USER") or "root"
 IMAGE_PULL_ALLOW = _csv_env(
     "IMAGE_PULL_ALLOW",
-    "veterandroners/*,ghcr.io/vdroners/*",
+    "",
     "NC_TOWER_IMAGE_PULL_ALLOW",
 )
 HOST_FAN_HELPER = _env(
@@ -133,7 +137,7 @@ HOST_FAN_HELPER = _env(
     "/usr/share/webmin/fan-control/gpu-fan-helper.py",
     "NC_TOWER_HOST_FAN_HELPER",
 )
-OLLAMA_URL = _env("OLLAMA_URL", "http://10.0.0.84:11434", "NC_TOWER_OLLAMA_URL")
+OLLAMA_URL = _env("OLLAMA_URL", "http://127.0.0.1:11434", "NC_TOWER_OLLAMA_URL")
 BACKUP_DIR = Path(_env("BACKUP_DIR", "/media/4TB/backups", "NC_TOWER_BACKUP_DIR"))
 DOCKER_CLEANUP_SCRIPT = _env(
     "DOCKER_CLEANUP_SCRIPT",
@@ -362,10 +366,28 @@ def _package_temperature() -> float | None:
     return candidates[0][1]
 
 
+def _host_ns_argv(argv: list[str]) -> list[str]:
+    """Prefix argv to run inside the host's mount+uts+net namespaces.
+
+    The sidecar sits on a Docker bridge, so its own net namespace shows only
+    lo+eth0 and its uts namespace reports the container id. With pid:host,
+    /proc/1 is the host init, so entering its namespaces makes ip / hostname /
+    ss / ethtool reflect the real host. --mount also gives the host's binaries,
+    so we do not depend on iproute2 being present in the image.
+    """
+    nsenter = _nsenter_bin()
+    if nsenter:
+        return [nsenter, "--target", "1", "--mount", "--uts", "--net", "--", *argv]
+    return argv
+
+
 def _interfaces() -> list[dict[str, Any]]:
-    ip = _which("ip")
+    ip = _which("ip") or "/usr/sbin/ip"
     if ip:
-        result = _run([ip, "-j", "addr"], timeout=8)
+        # Host namespace: the container has no addresses of interest, and older
+        # builds fell back to /sys (names only, addresses:[]) because no ip
+        # binary was present. Running the host's ip in the host net ns fixes both.
+        result = _run(_host_ns_argv([ip, "-j", "addr"]), timeout=8)
         if result["exit"] == 0:
             try:
                 data = json.loads(result["stdout"])
@@ -614,6 +636,22 @@ def host_smart() -> dict[str, Any]:
                 r"^Accumulated power on time, hours:minutes\s+(\d+):",
             ]
         )
+        # Wear counters. A drive can report SMART "PASSED" while quietly
+        # reallocating sectors — /dev/sda on this host reads 1072 — so these are
+        # the numbers that actually predict failure. Same single-line anchoring
+        # as the value patterns above: the raw count is the last column of the
+        # ATA attribute row. SCSI drives surface an equivalent under a
+        # "grown defect list" line.
+        def sector_count(*names: str) -> int | float | str | None:
+            row = match([rf"^\s*\d+\s+(?:{'|'.join(names)})\b[^\n]*?[-\s](\d+)\s*$"])
+            return _number(row) if row is not None else None
+
+        reallocated = sector_count("Reallocated_Sector_Ct", "Reallocated_Event_Count")
+        pending = sector_count("Current_Pending_Sector")
+        uncorrectable = sector_count("Offline_Uncorrectable", "Reported_Uncorrect")
+        if reallocated is None:
+            grown = match([r"^Elements in grown defect list:\s+(\d+)"])
+            reallocated = _number(grown) if grown is not None else None
         disks.append(
             {
                 "device": device,
@@ -627,6 +665,12 @@ def host_smart() -> dict[str, Any]:
                 ),
                 "temp_c": _number(temp or ""),
                 "power_on_hours": _number((hours or "").replace(",", "")),
+                # Kept flat and top-level because both the health rule
+                # (services/health.js) and the Ops SMART-trend columns read them
+                # directly off each disk row.
+                "reallocated": reallocated,
+                "pending": pending,
+                "uncorrectable": uncorrectable,
                 "smartctl_exit": detail["exit"],
             }
         )
@@ -937,13 +981,13 @@ def host_cron_save(body: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": "crontab_must_be_string", "http": 400}
     if len(text) > 200_000:
         return {"ok": False, "error": "crontab_too_large", "http": 400}
-    # Reject shell metacharacters outside comments — crontab lines are schedule + command.
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if any(tok in stripped for tok in ("\x00",)):
-            return {"ok": False, "error": "unsafe_crontab", "http": 400}
+    # A crontab command line is inherently a shell command, so blocking shell
+    # metacharacters would be both wrong and (as this previously did, testing
+    # only for NUL) cosmetic. What actually corrupts the crontab file or injects
+    # via a terminal is a control character, so reject those (tab and newline
+    # excepted) across the whole document.
+    if any((ord(ch) < 0x20 and ch not in "\t\n\r") or ord(ch) == 0x7f for ch in text):
+        return {"ok": False, "error": "control_characters_not_allowed", "http": 400}
     backup_dir = OPS_ROOT / "state" / "cron-backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
@@ -2415,7 +2459,7 @@ class Handler(BaseHTTPRequestHandler):
                 return True
             self._send(401, {"ok": False, "error": "unauthorized", "reason": "token_not_configured"})
             return False
-        if self.headers.get("X-Ops-Token") != TOKEN:
+        if not hmac.compare_digest(self.headers.get("X-Ops-Token") or "", TOKEN):
             self._send(401, {"ok": False, "error": "unauthorized"})
             return False
         return True
@@ -2424,7 +2468,7 @@ class Handler(BaseHTTPRequestHandler):
         if not TOKEN:
             self._send(403, {"ok": False, "error": "token_required"})
             return False
-        if self.headers.get("X-Ops-Token") != TOKEN:
+        if not hmac.compare_digest(self.headers.get("X-Ops-Token") or "", TOKEN):
             self._send(401, {"ok": False, "error": "unauthorized"})
             return False
         return True

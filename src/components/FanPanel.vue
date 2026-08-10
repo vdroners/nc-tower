@@ -108,10 +108,15 @@
 				:class="fancontrolActive ? 'nc-tower-chip--warn' : 'nc-tower-chip--ok'">
 				fancontrol.service {{ fancontrolActive ? 'active' : 'inactive' }}
 			</span>
-			<NcButton type="secondary" :disabled="busy" @click="restartFancontrol">
+			<NcButton type="secondary" :disabled="busy" @click="askRestartFancontrol">
 				Restart fancontrol
 			</NcButton>
 		</div>
+
+		<ConfirmDialog v-bind="confirm"
+			:open="confirm.open"
+			@cancel="confirm.open = false"
+			@confirm="runConfirmed" />
 	</div>
 </template>
 
@@ -120,6 +125,7 @@ import { showError, showSuccess } from '@nextcloud/dialogs'
 import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
 import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
 import NcTextField from '@nextcloud/vue/dist/Components/NcTextField.js'
+import ConfirmDialog from './ConfirmDialog.vue'
 
 import { get, post } from '../services/api.js'
 
@@ -144,9 +150,11 @@ const MODE_LABELS = {
  */
 export default {
 	name: 'FanPanel',
-	components: { NcButton, NcNoteCard, NcTextField },
+	components: { ConfirmDialog, NcButton, NcNoteCard, NcTextField },
 	data() {
 		return {
+			confirm: { open: false, title: '', message: '', confirmLabel: 'Apply', phrase: '', danger: false },
+			pendingAction: null,
 			loading: false,
 			busy: false,
 			error: '',
@@ -188,7 +196,9 @@ export default {
 		},
 		gpuFanRows() {
 			const status = this.gpuFan.status || this.gpuFan
-			const fans = status.fans || status.Fans || []
+			// Sidecar /host/fan emits `gpu_fans`; the older fans/Fans fallbacks
+			// never matched, so these rows were permanently empty.
+			const fans = status.gpu_fans || status.fans || status.Fans || []
 			if (!Array.isArray(fans) || !fans.length) {
 				return []
 			}
@@ -295,10 +305,15 @@ export default {
 			}
 		},
 		applyProfile(name) {
-			if (!window.confirm(`Apply chassis fan profile “${name}”?`)) {
-				return
+			this.confirm = {
+				open: true,
+				title: 'Apply fan profile',
+				message: `Apply chassis fan profile “${name}”?`,
+				confirmLabel: 'Apply',
+				phrase: '',
+				danger: false,
 			}
-			return this.mutateChassis('apply-profile', { profile: name })
+			this.pendingAction = () => this.mutateChassis('apply-profile', { profile: name })
 		},
 		onModeChange(fan, event) {
 			const mode = Number(event.target.value)
@@ -348,10 +363,26 @@ export default {
 				await this.refresh().catch(() => {})
 			}
 		},
-		async restartFancontrol() {
-			if (!window.confirm('Restart fancontrol.service?')) {
-				return
+		askRestartFancontrol() {
+			this.confirm = {
+				open: true,
+				title: 'Restart fancontrol',
+				message: 'Restart fancontrol.service? Chassis fans revert to its configured curve.',
+				confirmLabel: 'Restart',
+				phrase: '',
+				danger: true,
 			}
+			this.pendingAction = () => this.restartFancontrol()
+		},
+		async runConfirmed() {
+			const action = this.pendingAction
+			this.confirm.open = false
+			this.pendingAction = null
+			if (action) {
+				await action()
+			}
+		},
+		async restartFancontrol() {
 			this.busy = true
 			try {
 				const result = await post('/tower/systemd/restart', { unit: 'fancontrol.service' })

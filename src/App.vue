@@ -178,6 +178,20 @@ export default {
 	white-space: nowrap;
 }
 
+/* Status classes live here (global, unscoped) so every view and component
+ * shares one definition. They were previously redeclared scoped per-file, so
+ * e.g. Ops' NIC-link chips and System's status text silently rendered
+ * unstyled — the class existed only in another component's scope. */
+.nc-tower-chip--ok { background: var(--color-success); color: #fff; }
+.nc-tower-chip--warn { background: var(--color-warning); color: #000; }
+.nc-tower-chip--crit { background: var(--color-error); color: #fff; }
+.nc-tower-chip--active { outline: 2px solid var(--color-primary-element); }
+.nc-tower-chip--clickable { cursor: pointer; }
+
+.nc-tower-good { color: var(--color-success); }
+.nc-tower-bad { color: var(--color-error); }
+.nc-tower-warn { color: var(--color-warning); }
+
 .nc-tower-actions-cell {
 	display: flex;
 	justify-content: flex-end;

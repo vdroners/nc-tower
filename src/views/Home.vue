@@ -7,6 +7,18 @@
 			:busy="busy"
 			@refresh="refreshAll" />
 
+		<!-- Connectivity failures go directly under the verdict: when the sidecar
+		     is down the cards below read "—" and, buried under the chart, the
+		     operator had no explanation until they scrolled. -->
+		<NcNoteCard v-if="sidecarDown" type="error">
+			The NC Tower sidecar is not answering — host, Docker and stack views will be
+			empty until it is back. Check the <code>nc_tower_sidecar</code> container and that
+			<code>nc_tower_sidecar_token</code> matches <code>sidecar/.env</code>.
+		</NcNoteCard>
+		<NcNoteCard v-if="ncApiDown" type="warning">
+			Some Nextcloud Tower APIs failed ({{ ncApiErrors.join(', ') }}). Cards may show “—” until those endpoints recover.
+		</NcNoteCard>
+
 		<AttentionList :items="verdict.items" />
 
 		<div class="nc-tower-cards">
@@ -28,15 +40,6 @@
 				title="Ops alerts by hour" />
 			<p v-else class="nc-tower-muted">No ops alerts recorded in the last 24 hours.</p>
 		</section>
-
-		<NcNoteCard v-if="sidecarDown" type="error">
-			The NC Tower sidecar is not answering — host, Docker and stack views will be
-			empty until it is back. Check the <code>nc_tower_sidecar</code> container and that
-			<code>nc_tower_sidecar_token</code> matches <code>sidecar/.env</code>.
-		</NcNoteCard>
-		<NcNoteCard v-if="ncApiDown" type="warning">
-			Some Nextcloud Tower APIs failed ({{ ncApiErrors.join(', ') }}). Cards may show “—” until those endpoints recover.
-		</NcNoteCard>
 	</div>
 </template>
 
@@ -68,6 +71,7 @@ export default {
 			system: {},
 			users: {},
 			updates: {},
+			hostUpdates: {},
 			busy: false,
 			updatedAt: '',
 			sidecarDown: false,
@@ -155,6 +159,19 @@ export default {
 				{ label: 'Critical', data: buckets.map((b) => b.crit), backgroundColor: 'var(--color-error)' },
 			]
 		},
+		updatesRollup() {
+			// One number for "is anything behind?" spanning the three sources that
+			// otherwise live on three tabs: apt packages (Host), Nextcloud apps
+			// (Apps, via OCS) and the Nextcloud core release (System).
+			const apt = Number(this.hostUpdates.count || 0)
+			const apps = this.updates.available === false ? 0 : Number(this.updates.appscount || 0)
+			const core = (this.system.nc_updateCheckAvailable && this.system.nc_updateAvailable) ? 1 : 0
+			const parts = []
+			if (apt) parts.push(`${apt} apt`)
+			if (apps) parts.push(`${apps} app${apps > 1 ? 's' : ''}`)
+			if (core) parts.push('core')
+			return { total: apt + apps + core, note: parts.length ? parts.join(' · ') : 'up to date' }
+		},
 		cards() {
 			const counts = this.containers.counts || {}
 			const smartDisks = this.smart.disks || []
@@ -188,13 +205,11 @@ export default {
 					route: 'user',
 				},
 				{
-					id: 'apps',
-					label: 'App updates',
-					value: this.updates.available === false
-						? '—'
-						: (this.updates.appscount != null ? String(this.updates.appscount) : '—'),
-					note: this.updates.available === false ? 'check NC Apps' : 'available',
-					route: 'apps',
+					id: 'updates',
+					label: 'Updates',
+					value: this.updatesRollup.total != null ? String(this.updatesRollup.total) : '—',
+					note: this.updatesRollup.note,
+					route: 'host',
 				},
 				{
 					id: 'inbox',
@@ -214,6 +229,7 @@ export default {
 		p.add('host', () => this.fetch('host', '/tower/host'), 30000)
 		p.add('inbox', () => this.fetch('inbox', '/tower/ops-inbox'), 60000)
 		p.add('timeline', () => this.fetch('timeline', '/tower/ops-timeline?hours=24'), 300000)
+		p.add('hostUpdates', () => this.fetch('hostUpdates', '/tower/updates'), 300000)
 		p.add('system', () => this.fetch('system', '/systeminfo'), 120000)
 		p.add('users', () => this.fetch('users', '/usercount'), 300000)
 		p.add('updates', () => this.fetchUpdates(), 300000)

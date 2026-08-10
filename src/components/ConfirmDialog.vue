@@ -8,6 +8,7 @@
 		<div v-if="phrase" class="nc-tower-confirm__gate">
 			<label :for="inputId">Type <code>{{ phrase }}</code> to confirm</label>
 			<NcTextField :id="inputId"
+				ref="phraseField"
 				:value.sync="typed"
 				:label="`Type ${phrase}`"
 				:label-visible="false"
@@ -78,6 +79,16 @@ export default {
 		open(value) {
 			if (value) {
 				this.typed = ''
+				// Operators confirm these many times a day; land the caret in the
+				// phrase field so it is type-then-Enter with no mouse.
+				if (this.phrase) {
+					this.$nextTick(() => {
+						const field = this.$refs.phraseField?.$el?.querySelector('input')
+						if (field) {
+							field.focus()
+						}
+					})
+				}
 			}
 		},
 	},

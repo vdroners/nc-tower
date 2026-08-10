@@ -1,5 +1,18 @@
 <template>
 	<div class="nc-tower-table-wrap">
+		<!-- Card mode (<=720px) hides the thead, so the only sort affordance
+		     would vanish. This compact control is shown only there. -->
+		<div v-if="sortableColumns.length" class="nc-tower-table__cardsort">
+			<label>
+				Sort
+				<select :value="sortKey" @change="setSort($event.target.value)">
+					<option v-for="col in sortableColumns" :key="col.key" :value="col.key">{{ col.label }}</option>
+				</select>
+			</label>
+			<button type="button" class="nc-tower-table__cardsort-dir" :aria-label="sortAsc ? 'Ascending' : 'Descending'" @click="sortAsc = !sortAsc">
+				<NcTowerIcon :name="sortAsc ? 'chevron-up' : 'chevron-down'" :size="16" />
+			</button>
+		</div>
 		<table class="nc-tower-table">
 			<thead>
 				<tr>
@@ -33,7 +46,10 @@
 						</slot>
 					</td>
 				</tr>
-				<tr v-if="!sorted.length">
+				<tr v-if="loading && !sorted.length">
+					<td :colspan="columns.length" class="nc-tower-table__empty">Loading…</td>
+				</tr>
+				<tr v-else-if="!sorted.length">
 					<td :colspan="columns.length" class="nc-tower-table__empty">{{ emptyText }}</td>
 				</tr>
 			</tbody>
@@ -69,6 +85,12 @@ export default {
 			type: String,
 			default: 'Nothing to show',
 		},
+		/** Show a "Loading…" row instead of emptyText until the first fetch lands,
+		 * so a slow link doesn't flash a misleading "No containers". */
+		loading: {
+			type: Boolean,
+			default: false,
+		},
 		defaultSort: {
 			type: String,
 			default: '',
@@ -86,6 +108,9 @@ export default {
 		}
 	},
 	computed: {
+		sortableColumns() {
+			return this.columns.filter((col) => col.sortable !== false && col.label)
+		},
 		sorted() {
 			if (!this.sortKey) {
 				return this.rows
@@ -107,6 +132,9 @@ export default {
 		},
 	},
 	methods: {
+		setSort(key) {
+			this.sortKey = key
+		},
 		toggleSort(key) {
 			if (this.sortKey === key) {
 				this.sortAsc = !this.sortAsc
@@ -128,6 +156,28 @@ export default {
 <style lang="scss" scoped>
 .nc-tower-table-wrap {
 	overflow-x: auto;
+}
+
+// Desktop keeps the sortable header; the card-mode control only appears once
+// the header is hidden at the 720px breakpoint below.
+.nc-tower-table__cardsort {
+	display: none;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 8px;
+	font-size: 0.85em;
+	color: var(--color-text-maxcontrast);
+
+	select { max-width: 60%; }
+
+	&-dir {
+		border: 1px solid var(--color-border);
+		background: var(--color-main-background);
+		border-radius: var(--border-radius, 4px);
+		cursor: pointer;
+		min-width: 32px;
+		min-height: 32px;
+	}
 }
 
 .nc-tower-table {
@@ -175,6 +225,8 @@ export default {
 
 // Phone: every row becomes its own card, labels come from data-label.
 @media (max-width: 720px) {
+	.nc-tower-table__cardsort { display: flex; }
+
 	.nc-tower-table {
 		thead { display: none; }
 

@@ -66,6 +66,16 @@ firmware-version: 1.63, 0x800009fa
 bus-info: 0000:01:00.0
 """
 
+# veth interfaces report empty firmware-version / bus-info. `\\s*` used to let
+# the capture cross the newline and grab the next line's key.
+ETHTOOL_I_VETH = """driver: veth
+version: 1.0
+firmware-version:
+expansion-rom-version:
+bus-info:
+supports-statistics: yes
+"""
+
 
 class TaintTests(unittest.TestCase):
     def test_mce_bit(self):
@@ -115,11 +125,21 @@ class EthtoolTests(unittest.TestCase):
         out = parse_ethtool(ETHTOOL)
         self.assertEqual(out["speed"], "1000Mb/s")
         self.assertEqual(out["duplex"], "Full")
+        self.assertEqual(out["link_detected"], "yes")
 
     def test_driver(self):
         out = parse_ethtool_i(ETHTOOL_I)
         self.assertEqual(out["driver"], "igb")
         self.assertIn("1.63", out["firmware"])
+        self.assertEqual(out["bus_info"], "0000:01:00.0")
+
+    def test_empty_fields_do_not_capture_next_line(self):
+        out = parse_ethtool_i(ETHTOOL_I_VETH)
+        self.assertEqual(out["driver"], "veth")
+        self.assertEqual(out["version"], "1.0")
+        # firmware-version and bus-info are empty -> omitted, not the next key
+        self.assertNotIn("firmware", out)
+        self.assertNotIn("bus_info", out)
 
 
 class KernelTagTests(unittest.TestCase):

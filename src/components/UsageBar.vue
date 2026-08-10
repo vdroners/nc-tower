@@ -1,9 +1,16 @@
 <template>
-	<div class="nc-tower-usage">
+	<div class="nc-tower-usage"
+		role="progressbar"
+		:aria-valuenow="clamped"
+		aria-valuemin="0"
+		aria-valuemax="100"
+		:aria-label="`${clamped}% used${level !== 'ok' ? ` — ${level}` : ''}`">
 		<div class="nc-tower-usage__track">
 			<div class="nc-tower-usage__fill" :class="`nc-tower-usage__fill--${level}`" :style="{ width: `${clamped}%` }" />
 		</div>
-		<span class="nc-tower-usage__label">{{ clamped }}%</span>
+		<span class="nc-tower-usage__label" :class="`nc-tower-usage__label--${level}`">
+			{{ clamped }}%<span v-if="level !== 'ok'" class="nc-tower-usage__flag" aria-hidden="true">{{ level === 'crit' ? ' !!' : ' !' }}</span>
+		</span>
 	</div>
 </template>
 

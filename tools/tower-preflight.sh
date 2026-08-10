@@ -212,6 +212,30 @@ for f in js/nc_tower-main.js js/nc_tower-apps.js js/nc_tower-system.js js/nc_tow
 done
 [[ $dead -eq 0 ]] && echo "PASS G22 prebuilt Admin Cockpit bundles removed"
 
+# --- G28 App Store packaging + source neutrality ----------------------------
+# The tarball's single top folder must be exactly the app id, or NC rejects the
+# upload; and the shipped sidecar source must carry no lab-specific identity
+# (those live in the deployment's compose env, not in source).
+if grep -qE 'tar -czf .* -C "?\$\(APPSTORE_BUILD\)"? "?\$\(APP_ID\)"?' Makefile; then
+  echo "PASS G28 appstore tarball roots at the app id"
+else
+  note_fail G28 "appstore tarball must root at \$(APP_ID), not \$(APP_ID)-\$(VERSION)"
+fi
+
+# Match the lab tokens as substrings (a default like "gcs_*,mavlink_gateway"
+# must trip it), on lines that are neither comments, env-var names, nor
+# environment reads.
+# These tokens only ever appear in a default *value*, never in an env-var name,
+# so the only lines to ignore are comments.
+lab_hits=$(grep -nE 'gcs_\*|openclaw|veterandroners/\*|10\.0\.0\.84|vdroners' sidecar/app.py \
+  | grep -vE '^[0-9]+:\s*#' || true)
+if [[ -n "$lab_hits" ]]; then
+  note_fail G28 "lab-specific identity found in shipped sidecar source defaults"
+  printf '%s\n' "$lab_hits" | sed 's/^/    /'
+else
+  echo "PASS G28 sidecar source defaults carry no lab identity"
+fi
+
 # --- G20 payload shape ------------------------------------------------------
 # The 1.8.1 defects all passed every route gate: the routes existed and the
 # files were deployed, but the field names the UI reads had drifted. Assert

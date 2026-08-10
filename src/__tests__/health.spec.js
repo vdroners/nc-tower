@@ -96,6 +96,32 @@ describe('assess — SMART', () => {
 		expect(result.level).toBe(OK)
 	})
 
+	// 1.17.0: wear counters must surface regardless of age. Before this the
+	// sidecar dropped sector counts entirely and /dev/sda (1072 reallocated,
+	// SMART PASS, 6.9 y) produced no finding at all.
+	it('warns on reallocated sectors even on a young PASS drive', () => {
+		const result = assess({ smart: { disks: [{ device: '/dev/sdz', health: 'PASS', power_on_hours: 1000, reallocated: 8 }] } })
+		expect(result.level).toBe(WARN)
+		expect(find(result, 'reallocated sector')).toBeTruthy()
+	})
+
+	it('escalates pending/uncorrectable sectors to critical', () => {
+		const pending = assess({ smart: { disks: [{ device: '/dev/sdz', health: 'PASS', power_on_hours: 1000, pending: 2 }] } })
+		expect(pending.level).toBe(CRIT)
+		expect(find(pending, 'unreadable sector')).toBeTruthy()
+
+		const uncorr = assess({ smart: { disks: [{ device: '/dev/sdz', health: 'PASS', uncorrectable: 5 }] } })
+		expect(uncorr.level).toBe(CRIT)
+	})
+
+	it('surfaces the real /dev/sda: PASS, aged, 1072 reallocated', () => {
+		const result = assess({
+			smart: { disks: [{ device: '/dev/sda', health: 'PASS', power_on_hours: 60605, reallocated: 1072, pending: 0, uncorrectable: 0 }] },
+		})
+		expect(result.level).toBe(WARN)
+		expect(find(result, '1072 reallocated sector')).toBeTruthy()
+	})
+
 	it('reports an unreachable network mount', () => {
 		const result = assess({ smart: { nas_mounts: [{ path: '/media/raid5', ok: false }] } })
 		expect(result.level).toBe(CRIT)

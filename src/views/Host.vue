@@ -6,18 +6,6 @@
 			Nextcloud-container facts live on the System tab.
 		</p>
 
-		<HostInventoryPanels
-			:capabilities="capabilities"
-			:hardware="hardware"
-			:storage="storageTopo"
-			:temperatures="temperatures"
-			:temp-history="tempHistory"
-			:posture="posture"
-			:kernel-log="kernelLog"
-			:loading="loading"
-			:errors="errors"
-			@refresh="refresh" />
-
 		<Section id="host.mounts"
 			title="Mounts"
 			:summary="mountSummary"
@@ -156,6 +144,21 @@
 			</ul>
 			<p class="nc-tower-muted">Editing cron stays in Webmin.</p>
 		</Section>
+
+		<!-- Reference hardware inventory sits below day-ops: an operator on this
+		     tab is usually asking "any updates? are my services up?", not reading
+		     the DIMM map. -->
+		<HostInventoryPanels
+			:capabilities="capabilities"
+			:hardware="hardware"
+			:storage="storageTopo"
+			:temperatures="temperatures"
+			:temp-history="tempHistory"
+			:posture="posture"
+			:kernel-log="kernelLog"
+			:loading="loading"
+			:errors="errors"
+			@refresh="refresh" />
 
 		<Section id="host.load"
 			title="Memory trend"

@@ -226,7 +226,10 @@ def host_network_payload(
 
     def host_cmd(argv: list[str], timeout: int = 10) -> dict[str, Any]:
         if nsenter:
-            return run([nsenter, "--mount=/proc/1/ns/mnt", "--", *argv], timeout=timeout)
+            # mount+uts+net of the host init (pid:host). --mount alone left
+            # `ip link`, zerotier-cli and wg describing the sidecar's own
+            # Docker-bridge namespace (lo+eth0) instead of the host's.
+            return run([nsenter, "--target", "1", "--mount", "--uts", "--net", "--", *argv], timeout=timeout)
         return run(argv, timeout=timeout)
 
     zerotier: dict[str, Any] = {"unavailable": False}

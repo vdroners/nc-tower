@@ -5,7 +5,6 @@
 			:summary="hardwareSummary"
 			:loading="loading.hardware"
 			:error="errors.hardware"
-			default-open
 			@refresh="$emit('refresh', 'hardware')">
 			<NcNoteCard v-if="!hasCap('hardware')" type="info">
 				Sidecar update needed for hardware inventory (capability <code>hardware</code>).
@@ -354,7 +353,10 @@ export default {
 		},
 		tempHistoryDatasets() {
 			const samples = this.tempHistory.samples || []
-			const at = (row) => new Date(row.ts).getTime()
+			// /host/temperatures/history emits ts as epoch *seconds* (a number),
+			// unlike /host/history's ISO strings. new Date(seconds) reads them as
+			// milliseconds and plots January 1970, so scale a bare number up.
+			const at = (row) => (typeof row.ts === 'number' ? new Date(row.ts * 1000) : new Date(row.ts)).getTime()
 			return [{
 				label: 'Package °C',
 				data: samples

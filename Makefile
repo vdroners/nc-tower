@@ -90,12 +90,17 @@ _bump:
 	echo "Bumped $$cur -> $$next"
 
 VERSION := $(shell grep -oE '<version>[0-9]+\.[0-9]+\.[0-9]+</version>' "$(ROOT)appinfo/info.xml" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-STAGING := /tmp/$(APP_ID)-$(VERSION)
+# The archive's single top-level directory MUST be exactly the app id: the
+# App Store upload and `occ app:install` reject nc_tower-<version>/. So stage
+# into <build>/nc_tower and tar that name, keeping the version only in the
+# tarball filename.
+APPSTORE_BUILD := /tmp/nc_tower-appstore
+STAGING := $(APPSTORE_BUILD)/$(APP_ID)
 TARBALL := /tmp/$(APP_ID)-$(VERSION).tar.gz
 
 # Self-contained App Store tarball (built assets; sidecar source included, .env excluded).
 appstore: build
-	rm -rf "$(STAGING)"
+	rm -rf "$(APPSTORE_BUILD)"
 	mkdir -p "$(STAGING)"
 	rsync -a --delete \
 		--exclude node_modules --exclude .git --exclude .github \
@@ -105,8 +110,8 @@ appstore: build
 		--exclude webpack.config.js --exclude vitest.config.cjs \
 		"$(ROOT)" "$(STAGING)/"
 	rm -rf "$(STAGING)/node_modules"
-	tar -czf "$(TARBALL)" -C /tmp "$(APP_ID)-$(VERSION)"
-	@echo "Release tarball: $(TARBALL)"
+	tar -czf "$(TARBALL)" -C "$(APPSTORE_BUILD)" "$(APP_ID)"
+	@echo "Release tarball: $(TARBALL) (top-level dir: $(APP_ID)/)"
 
 appstore-sign: appstore
 	@test -n "$(NC_OCC)" || (echo "Set NC_OCC to your occ binary path" && exit 1)
