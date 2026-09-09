@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.18.1] - 2026-09-09
+
+Fixes a dashboard-wide crash caused by a widget-id mismatch.
+
+### Fixed — dashboard widget id mismatch (crashed the whole Dashboard)
+- The frontend registered the dashboard callback as `OCA.Dashboard.register('nc_tower', …)`
+  while the backend `NcTowerWidget::getId()` returns `nc_tower-widget`. Nextcloud core's
+  `DashboardApp.rerenderPanels()` iterates every registered callback and reads
+  `panels[id].id`; with no server-side panel for `nc_tower`, that threw
+  `TypeError: Cannot read properties of undefined (reading 'id')` **and aborted the entire
+  widget-mount loop**. Because `nc_tower` sorted first, *every* other app's widget after it
+  (Deck, Notes, Recommendations, Tasks, **nc_gcs Fleet Status**, nc_print, …) silently failed
+  to mount — the Fleet Status panel showed an empty/stuck tile. Aligned the frontend
+  registration id to `nc_tower-widget` so it matches the backend and the persisted layout.
+
 ## [1.18.0] - 2026-08-10
 
 Fixes the remaining audit findings 1.17.0 left open (its "notes" plus the deferred UI).

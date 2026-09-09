@@ -11,7 +11,12 @@ function register() {
 	if (!window.OCA?.Dashboard?.register) {
 		return
 	}
-	window.OCA.Dashboard.register('nc_tower', (element) => {
+	// Must match the backend widget id (NcTowerWidget::getId() -> 'nc_tower-widget').
+	// A mismatch leaves this callback registered under an id with no server-side
+	// panel, which crashes Nextcloud core's rerenderPanels (reads panels[id].id)
+	// and aborts the whole widget-mount loop — taking down every other app's
+	// dashboard widget too.
+	window.OCA.Dashboard.register('nc_tower-widget', (element) => {
 		const mount = document.createElement('div')
 		element.appendChild(mount)
 		// eslint-disable-next-line no-new

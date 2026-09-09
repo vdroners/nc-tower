@@ -1,6 +1,6 @@
 # NC Tower
 
-**Version 1.18.0**
+**Version 1.18.1**
 
 NC Tower is the Nextcloud orchestrator for this GCS host: Nextcloud admin, Docker
 day-ops (Portainer-style container groups), host inventory with hardware
