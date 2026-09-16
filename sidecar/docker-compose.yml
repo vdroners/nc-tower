@@ -4,6 +4,10 @@
 # Lab (GCS) overlay: docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d
 # Or use docker-compose.lab.yml alone on the operator estate.
 
+# Pinned so the project is named after the app rather than the directory this
+# file happens to sit in ("sidecar"). The lab overlay sets the same name.
+name: nc-tower
+
 services:
   nc-tower-sidecar:
     build: .

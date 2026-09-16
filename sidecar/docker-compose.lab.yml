@@ -2,6 +2,12 @@
 # Use with: docker compose -f docker-compose.lab.yml up -d
 # (standalone — includes full lab mounts; does not require the generic file)
 
+# Pinned so the project does not fall back to the directory basename. Without
+# this the stack came up as project "sidecar", which says nothing about which
+# product owns it; every sibling on this estate is named after its app
+# (nc-print, nc-litter, nc-roomba).
+name: nc-tower
+
 services:
   nc-tower-sidecar:
     image: python:3.12-slim-bookworm
@@ -70,6 +76,32 @@ services:
       - /etc/crontab:/etc/crontab:ro
       - /etc/cron.d:/etc/cron.d:ro
       - nc_tower_sidecar_audit:/var/log/nc-tower-sidecar
+    # Every route requires auth, so a 401 is proof the app is serving. Treat any
+    # HTTP response as healthy and fail only on connect/timeout errors.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import urllib.request, urllib.error, sys
+          try:
+              urllib.request.urlopen('http://127.0.0.1:18765/health', timeout=3)
+          except urllib.error.HTTPError:
+              pass
+          except Exception:
+              sys.exit(1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    # Observed 262MiB. Headroom because this sidecar shells out to docker,
+    # systemctl and the backup script. No pids_limit on purpose: it runs with
+    # pid: host and spawns host tooling, so a cap here buys confusion, not safety.
+    deploy:
+      resources:
+        limits:
+          memory: 2GB
     ports:
       - "127.0.0.1:18765:18765"
     networks:
@@ -77,6 +109,11 @@ services:
 
 volumes:
   nc_tower_sidecar_audit:
+    # Pinned to the pre-rename prefix. Compose prefixes volume names with the
+    # project, so moving this stack from project "sidecar" to "nc-tower" would
+    # otherwise have created an empty nc-tower_nc_tower_sidecar_audit and
+    # orphaned the existing audit log.
+    name: sidecar_nc_tower_sidecar_audit
 
 networks:
   cloud_cloud_network:
